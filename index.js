@@ -17,7 +17,7 @@ const {
 const path = require('path');
 const fs   = require('fs');
 
-const { initDatabase, run, get } = require('./src/database/db');
+const { initDatabase, run, get, all } = require('./src/database/db');
 const {
   RAREZA_COLORES,
   JERARQUIA_RAREZA,
@@ -119,6 +119,32 @@ function getPlatanos(userId, guildId) {
   return get('SELECT * FROM platanos WHERE user_id = ? AND guild_id = ?', [userId, guildId]);
 }
 
+function getTopRecolecciones(limit = 10) {
+  return all(
+    `SELECT user_id, SUM(total_collected) AS total
+     FROM users GROUP BY user_id ORDER BY total DESC LIMIT ?`,
+    [limit]
+  );
+}
+
+function getTopFuerza(limit = 10) {
+  return all(
+    `SELECT user_id, MAX(fuerza_total) AS max_fuerza, rareza
+     FROM ramitas_items GROUP BY user_id ORDER BY max_fuerza DESC LIMIT ?`,
+    [limit]
+  );
+}
+
+function getTopPrestige(limit = 10) {
+  return all(
+    `SELECT user_id,
+       SUM(comun*1 + poco_comun*2 + rara*4 + extrana*8 + mistica*16
+           + epica*32 + legendaria*64 + cosmica*128 + divina*256) AS score
+     FROM ramitas GROUP BY user_id ORDER BY score DESC LIMIT ?`,
+    [limit]
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // IMÁGENES LOCALES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -147,6 +173,20 @@ const slashCommands = [
   new SlashCommandBuilder()
     .setName('perfil')
     .setDescription('👤 Muestra tu perfil y estadísticas de recolección')
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('top')
+    .setDescription('🏆 Ver el top global de recolectores')
+    .addStringOption(opt =>
+      opt.setName('categoria')
+        .setDescription('Categoría del ranking (default: recolecciones)')
+        .setRequired(false)
+        .addChoices(
+          { name: '🌿 Más recolecciones', value: 'recolecciones' },
+          { name: '⚡ Mayor fuerza',       value: 'fuerza'        },
+          { name: '✨ Mayor prestige',     value: 'prestige'      },
+        )
+    )
     .toJSON(),
 ];
 
@@ -422,6 +462,61 @@ client.on('interactionCreate', async (interaction) => {
     } catch (err) {
       console.error('[CMD] /perfil error:', err.message);
       await interaction.editReply({ content: '❌ Error al obtener el perfil.' });
+    }
+  }
+
+  // ── /top ───────────────────────────────────────────────────────────────────
+  else if (commandName === 'top') {
+    await interaction.deferReply();
+    try {
+      const categoria = interaction.options.getString('categoria') ?? 'recolecciones';
+
+      let rows, titulo, valorFn;
+
+      if (categoria === 'fuerza') {
+        rows    = getTopFuerza();
+        titulo  = '⚡ Top Global — Mayor Fuerza';
+        valorFn = row => `⚡ **${row.max_fuerza}** fuerza *(${NOMBRES_RAREZA[row.rareza] ?? row.rareza})*`;
+      } else if (categoria === 'prestige') {
+        rows    = getTopPrestige();
+        titulo  = '✨ Top Global — Mayor Prestige';
+        valorFn = row => `✨ **${row.score}** pts`;
+      } else {
+        rows    = getTopRecolecciones();
+        titulo  = '🌿 Top Global — Más Recolecciones';
+        valorFn = row => `🌿 **${row.total}** recolecciones`;
+      }
+
+      if (rows.length === 0) {
+        return interaction.editReply({ content: '📭 Todavía no hay datos en el ranking global.' });
+      }
+
+      const MEDALLAS = ['🥇', '🥈', '🥉'];
+
+      const lines = await Promise.all(rows.map(async (row, i) => {
+        let nombre;
+        try {
+          const u = await client.users.fetch(row.user_id);
+          nombre = u.username;
+        } catch {
+          nombre = `Usuario ···${row.user_id.slice(-4)}`;
+        }
+        const pos = MEDALLAS[i] ?? `**${i + 1}.**`;
+        return `${pos} ${nombre} — ${valorFn(row)}`;
+      }));
+
+      const embed = new EmbedBuilder()
+        .setTitle(titulo)
+        .setDescription(lines.join('\n'))
+        .setColor(0xFFD700)
+        .setFooter({ text: 'Ranking global · todos los servidores' })
+        .setTimestamp();
+
+      await interaction.editReply({ embeds: [embed] });
+
+    } catch (err) {
+      console.error('[CMD] /top error:', err.message);
+      await interaction.editReply({ content: '❌ Error al obtener el ranking.' });
     }
   }
 });
