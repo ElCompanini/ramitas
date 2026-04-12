@@ -176,17 +176,7 @@ const slashCommands = [
     .toJSON(),
   new SlashCommandBuilder()
     .setName('top')
-    .setDescription('🏆 Ver el top global de recolectores')
-    .addStringOption(opt =>
-      opt.setName('categoria')
-        .setDescription('Categoría del ranking (default: recolecciones)')
-        .setRequired(false)
-        .addChoices(
-          { name: '🌿 Más recolecciones', value: 'recolecciones' },
-          { name: '⚡ Mayor fuerza',       value: 'fuerza'        },
-          { name: '✨ Mayor prestige',     value: 'prestige'      },
-        )
-    )
+    .setDescription('🏆 Ver los tops globales de recolectores')
     .toJSON(),
 ];
 
@@ -205,7 +195,7 @@ const client = new Client({
 // ─────────────────────────────────────────────────────────────────────────────
 // EVENTO: READY
 // ─────────────────────────────────────────────────────────────────────────────
-client.once('ready', async () => {
+client.once('clientReady', async () => {
   console.log(`[BOT] ✅ ${client.user.tag} operativo.`);
   client.user.setActivity('🌿 Recolectando ramitas...', { type: ActivityType.Watching });
 
@@ -469,47 +459,39 @@ client.on('interactionCreate', async (interaction) => {
   else if (commandName === 'top') {
     await interaction.deferReply();
     try {
-      const categoria = interaction.options.getString('categoria') ?? 'recolecciones';
-
-      let rows, titulo, valorFn;
-
-      if (categoria === 'fuerza') {
-        rows    = getTopFuerza();
-        titulo  = '⚡ Top Global — Mayor Fuerza';
-        valorFn = row => `⚡ **${row.max_fuerza}** fuerza *(${NOMBRES_RAREZA[row.rareza] ?? row.rareza})*`;
-      } else if (categoria === 'prestige') {
-        rows    = getTopPrestige();
-        titulo  = '✨ Top Global — Mayor Prestige';
-        valorFn = row => `✨ **${row.score}** pts`;
-      } else {
-        rows    = getTopRecolecciones();
-        titulo  = '🌿 Top Global — Más Recolecciones';
-        valorFn = row => `🌿 **${row.total}** recolecciones`;
-      }
-
-      if (rows.length === 0) {
-        return interaction.editReply({ content: '📭 Todavía no hay datos en el ranking global.' });
-      }
-
       const MEDALLAS = ['🥇', '🥈', '🥉'];
 
-      const lines = await Promise.all(rows.map(async (row, i) => {
-        let nombre;
-        try {
-          const u = await client.users.fetch(row.user_id);
-          nombre = u.username;
-        } catch {
-          nombre = `Usuario ···${row.user_id.slice(-4)}`;
-        }
-        const pos = MEDALLAS[i] ?? `**${i + 1}.**`;
-        return `${pos} ${nombre} — ${valorFn(row)}`;
-      }));
+      async function buildField(rows, valorFn) {
+        if (rows.length === 0) return '*Sin datos aún*';
+        const lines = await Promise.all(rows.map(async (row, i) => {
+          let nombre;
+          try {
+            const u = await client.users.fetch(row.user_id);
+            nombre = u.username;
+          } catch {
+            nombre = `Usuario ···${row.user_id.slice(-4)}`;
+          }
+          const pos = MEDALLAS[i] ?? `**${i + 1}.**`;
+          return `${pos} ${nombre} — ${valorFn(row)}`;
+        }));
+        return lines.join('\n');
+      }
+
+      const [recolecciones, fuerza, prestige] = await Promise.all([
+        buildField(getTopRecolecciones(5), row => `🌿 **${row.total}** recolecciones`),
+        buildField(getTopFuerza(5),        row => `⚡ **${row.max_fuerza}** fuerza *(${NOMBRES_RAREZA[row.rareza] ?? row.rareza})*`),
+        buildField(getTopPrestige(5),      row => `✨ **${row.score}** pts`),
+      ]);
 
       const embed = new EmbedBuilder()
-        .setTitle(titulo)
-        .setDescription(lines.join('\n'))
+        .setTitle('🏆 Tops Globales')
+        .addFields(
+          { name: '🌿 Más Recolecciones', value: recolecciones, inline: false },
+          { name: '⚡ Mayor Fuerza',       value: fuerza,        inline: false },
+          { name: '✨ Mayor Prestige',     value: prestige,      inline: false },
+        )
         .setColor(0xFFD700)
-        .setFooter({ text: 'Ranking global · todos los servidores' })
+        .setFooter({ text: 'Ranking global · todos los servidores · top 5 por categoría' })
         .setTimestamp();
 
       await interaction.editReply({ embeds: [embed] });
