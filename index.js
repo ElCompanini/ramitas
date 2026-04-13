@@ -51,6 +51,7 @@ if (!OWNER_ID)  { console.warn('[CONFIG] ⚠️  OWNER_ID no definido. /soltar_p
 console.log('[CONFIG] EVENT_CHANNEL_IDS raw:', JSON.stringify(process.env.EVENT_CHANNEL_IDS));
 console.log('[CONFIG] EVENT_CHANNEL_ID  raw:', JSON.stringify(process.env.EVENT_CHANNEL_ID));
 console.log('[CONFIG] canales detectados:', EVENT_CHANNEL_IDS);
+console.log('[CONFIG] variables disponibles:', Object.keys(process.env).filter(k => !['TOKEN','CLIENT_ID','OWNER_ID'].includes(k)));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTES DE TIEMPO
