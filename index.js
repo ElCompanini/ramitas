@@ -113,16 +113,31 @@ function addPlatano(userId, guildId, columna) {
   run(`UPDATE platanos SET ${columna} = ${columna} + 1 WHERE user_id = ? AND guild_id = ?`, [userId, guildId]);
 }
 
-function getUser(userId, guildId) {
-  return get('SELECT * FROM users WHERE user_id = ? AND guild_id = ?', [userId, guildId]);
+// Versiones globales (suma todos los servidores) — usadas en /perfil e /inventario
+function getRamitasGlobal(userId) {
+  return get(
+    `SELECT SUM(comun) AS comun, SUM(poco_comun) AS poco_comun, SUM(rara) AS rara,
+            SUM(extrana) AS extrana, SUM(mistica) AS mistica, SUM(epica) AS epica,
+            SUM(legendaria) AS legendaria, SUM(cosmica) AS cosmica, SUM(divina) AS divina
+     FROM ramitas WHERE user_id = ?`,
+    [userId]
+  );
 }
 
-function getRamitas(userId, guildId) {
-  return get('SELECT * FROM ramitas WHERE user_id = ? AND guild_id = ?', [userId, guildId]);
+function getPlatanasGlobal(userId) {
+  return get(
+    `SELECT SUM(elementales) AS elementales, SUM(avanzados) AS avanzados,
+            SUM(galacticos) AS galacticos, SUM(esencia) AS esencia
+     FROM platanos WHERE user_id = ?`,
+    [userId]
+  );
 }
 
-function getPlatanos(userId, guildId) {
-  return get('SELECT * FROM platanos WHERE user_id = ? AND guild_id = ?', [userId, guildId]);
+function getUserGlobal(userId) {
+  return get(
+    'SELECT SUM(total_collected) AS total_collected FROM users WHERE user_id = ?',
+    [userId]
+  );
 }
 
 function getTopRecolecciones(limit = 10) {
@@ -351,7 +366,8 @@ function iniciarEventoHorario() {
         collector.on('collect', async (_reaction, ganador) => {
           try {
             ensureUser(ganador.id, canal.guild.id);
-            addRamita(ganador.id, canal.guild.id, ramita.columna);
+            const statsEvento = generarStats(ramita.columna);
+            addRamita(ganador.id, canal.guild.id, ramita.columna, statsEvento);
 
             let texto = `<@${ganador.id}> reclamó la **Ramita ${ramita.nombre}** ${ramita.emoji}!`;
             if (platano) {
@@ -459,8 +475,8 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.deferReply();
     try {
       ensureUser(user.id, guildId);
-      const ramitas  = getRamitas(user.id, guildId);
-      const platanos = getPlatanos(user.id, guildId);
+      const ramitas  = getRamitasGlobal(user.id);
+      const platanos = getPlatanasGlobal(user.id);
 
       const embed = new EmbedBuilder()
         .setTitle(`📦 Inventario de ${user.username}`)
@@ -508,9 +524,9 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.deferReply();
     try {
       ensureUser(user.id, guildId);
-      const userData = getUser(user.id, guildId);
-      const ramitas  = getRamitas(user.id, guildId);
-      const platanos = getPlatanos(user.id, guildId);
+      const userData = getUserGlobal(user.id);
+      const ramitas  = getRamitasGlobal(user.id);
+      const platanos = getPlatanasGlobal(user.id);
 
       const COLS_R = ['comun','poco_comun','rara','extrana','mistica','epica','legendaria','cosmica','divina'];
       const COLS_P = ['elementales','avanzados','galacticos','esencia'];
