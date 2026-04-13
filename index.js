@@ -19,6 +19,9 @@ const fs   = require('fs');
 
 const { initDatabase, run, get, all } = require('./src/database/db');
 const {
+  RAMITAS,
+  ESTILOS,
+  FORMAS,
   RAREZA_COLORES,
   JERARQUIA_RAREZA,
   NOMBRES_RAREZA,
@@ -26,6 +29,9 @@ const {
   getPlatanoAleatorio,
   generarStats,
 } = require('./src/utils/rng');
+
+// Lookup rápido: columna → objeto ramita (nombre, emoji, …)
+const RAMITA_MAP = Object.fromEntries(RAMITAS.map(r => [r.columna, r]));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VARIABLES DE ENTORNO
@@ -145,6 +151,59 @@ function getTopPrestige(limit = 10) {
   );
 }
 
+function getRamitasItems(userId, rareza, limit = 10) {
+  if (rareza) {
+    return all(
+      `SELECT * FROM ramitas_items WHERE user_id = ? AND rareza = ? ORDER BY fuerza_total DESC LIMIT ?`,
+      [userId, rareza, limit]
+    );
+  }
+  return all(
+    `SELECT * FROM ramitas_items WHERE user_id = ? ORDER BY fuerza_total DESC LIMIT ?`,
+    [userId, limit]
+  );
+}
+
+function getRamitaItem(id) {
+  return get('SELECT * FROM ramitas_items WHERE id = ?', [id]);
+}
+
+function getPosicionRecolecciones(userId) {
+  const row = get(
+    `SELECT COUNT(*) + 1 AS pos FROM (
+       SELECT user_id, SUM(total_collected) AS total FROM users GROUP BY user_id
+     ) AS r WHERE total > COALESCE((SELECT SUM(total_collected) FROM users WHERE user_id = ?), 0)`,
+    [userId]
+  );
+  return row?.pos ?? null;
+}
+
+function getPosicionFuerza(userId) {
+  const row = get(
+    `SELECT COUNT(*) + 1 AS pos FROM (
+       SELECT user_id, MAX(fuerza_total) AS max_fuerza FROM ramitas_items GROUP BY user_id
+     ) AS r WHERE max_fuerza > COALESCE((SELECT MAX(fuerza_total) FROM ramitas_items WHERE user_id = ?), 0)`,
+    [userId]
+  );
+  return row?.pos ?? null;
+}
+
+function getPosicionPrestige(userId) {
+  const row = get(
+    `SELECT COUNT(*) + 1 AS pos FROM (
+       SELECT user_id,
+         SUM(comun*1 + poco_comun*2 + rara*4 + extrana*8 + mistica*16
+             + epica*32 + legendaria*64 + cosmica*128 + divina*256) AS score
+       FROM ramitas GROUP BY user_id
+     ) AS r WHERE score > COALESCE(
+       (SELECT SUM(comun*1 + poco_comun*2 + rara*4 + extrana*8 + mistica*16
+                + epica*32 + legendaria*64 + cosmica*128 + divina*256)
+        FROM ramitas WHERE user_id = ?), 0)`,
+    [userId]
+  );
+  return row?.pos ?? null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // IMÁGENES LOCALES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -177,6 +236,36 @@ const slashCommands = [
   new SlashCommandBuilder()
     .setName('top')
     .setDescription('🏆 Ver los tops globales de recolectores')
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('inspeccionar')
+    .setDescription('🔍 Inspecciona tus ramitas (solo visible para ti)')
+    .addStringOption(opt =>
+      opt.setName('rareza')
+        .setDescription('Filtrar por rareza')
+        .setRequired(false)
+        .addChoices(
+          { name: '🟤 Común',      value: 'comun'      },
+          { name: '🟢 Poco Común', value: 'poco_comun' },
+          { name: '🔵 Rara',       value: 'rara'       },
+          { name: '🟣 Extraña',    value: 'extrana'    },
+          { name: '⚪ Mística',    value: 'mistica'    },
+          { name: '🟠 Épica',      value: 'epica'      },
+          { name: '🟡 Legendaria', value: 'legendaria' },
+          { name: '🌌 Cósmica',    value: 'cosmica'    },
+          { name: '✨ Divina',     value: 'divina'     },
+        )
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('mostrar')
+    .setDescription('📢 Muestra una de tus ramitas públicamente')
+    .addIntegerOption(opt =>
+      opt.setName('id')
+        .setDescription('ID de la ramita (obtenida con /inspeccionar)')
+        .setRequired(true)
+        .setMinValue(1)
+    )
     .toJSON(),
 ];
 
@@ -461,7 +550,7 @@ client.on('interactionCreate', async (interaction) => {
     try {
       const MEDALLAS = ['🥇', '🥈', '🥉'];
 
-      async function buildField(rows, valorFn) {
+      async function buildField(rows, valorFn, userId, userPos) {
         if (rows.length === 0) return '*Sin datos aún*';
         const lines = await Promise.all(rows.map(async (row, i) => {
           let nombre;
@@ -474,13 +563,23 @@ client.on('interactionCreate', async (interaction) => {
           const pos = MEDALLAS[i] ?? `**${i + 1}.**`;
           return `${pos} ${nombre} — ${valorFn(row)}`;
         }));
+        const enTop = rows.some(r => r.user_id === userId);
+        if (!enTop && userPos !== null) {
+          lines.push(`\n📍 Tu posición: **#${userPos}**`);
+        }
         return lines.join('\n');
       }
 
+      const [posR, posF, posP] = [
+        getPosicionRecolecciones(user.id),
+        getPosicionFuerza(user.id),
+        getPosicionPrestige(user.id),
+      ];
+
       const [recolecciones, fuerza, prestige] = await Promise.all([
-        buildField(getTopRecolecciones(5), row => `🌿 **${row.total}** recolecciones`),
-        buildField(getTopFuerza(5),        row => `⚡ **${row.max_fuerza}** fuerza *(${NOMBRES_RAREZA[row.rareza] ?? row.rareza})*`),
-        buildField(getTopPrestige(5),      row => `✨ **${row.score}** pts`),
+        buildField(getTopRecolecciones(3), row => `🌿 **${row.total}** recolecciones`,                                        user.id, posR),
+        buildField(getTopFuerza(3),        row => `⚡ **${row.max_fuerza}** fuerza *(${NOMBRES_RAREZA[row.rareza] ?? row.rareza})*`, user.id, posF),
+        buildField(getTopPrestige(3),      row => `✨ **${row.score}** pts`,                                                   user.id, posP),
       ]);
 
       const embed = new EmbedBuilder()
@@ -491,7 +590,7 @@ client.on('interactionCreate', async (interaction) => {
           { name: '✨ Mayor Prestige',     value: prestige,      inline: false },
         )
         .setColor(0xFFD700)
-        .setFooter({ text: 'Ranking global · todos los servidores · top 5 por categoría' })
+        .setFooter({ text: 'Ranking global · todos los servidores · top 3 por categoría' })
         .setTimestamp();
 
       await interaction.editReply({ embeds: [embed] });
@@ -499,6 +598,91 @@ client.on('interactionCreate', async (interaction) => {
     } catch (err) {
       console.error('[CMD] /top error:', err.message);
       await interaction.editReply({ content: '❌ Error al obtener el ranking.' });
+    }
+  }
+
+  // ── /inspeccionar ──────────────────────────────────────────────────────────
+  else if (commandName === 'inspeccionar') {
+    try {
+      const rareza = interaction.options.getString('rareza');
+      const items  = getRamitasItems(user.id, rareza, 10);
+
+      if (items.length === 0) {
+        return interaction.reply({
+          content: rareza
+            ? `📭 No tienes ramitas **${NOMBRES_RAREZA[rareza]}** todavía.`
+            : '📭 Todavía no tienes ninguna ramita.',
+          ephemeral: true,
+        });
+      }
+
+      const tituloRareza = rareza ? NOMBRES_RAREZA[rareza] : 'Todas las rarezas';
+      const lineas = items.map((item) => {
+        const estiloEmoji  = ESTILOS.find(e => e.nombre === item.estilo)?.emoji ?? '⚔️';
+        const formaEmoji   = FORMAS.find(f => f.nombre === item.forma)?.emoji   ?? '🌿';
+        const nombreRareza = NOMBRES_RAREZA[item.rareza] ?? item.rareza;
+        return `\`#${item.id}\` ${nombreRareza} · ${estiloEmoji} ${item.estilo} · ${formaEmoji} ${item.forma} — ⚡ **${item.fuerza_total}**`;
+      });
+
+      const ramitaInfo = rareza ? RAMITA_MAP[rareza] : null;
+      const color = ramitaInfo ? (RAREZA_COLORES[ramitaInfo.nombre] ?? 0x5865F2) : 0x5865F2;
+
+      const embed = new EmbedBuilder()
+        .setTitle(`🔍 Tu inventario — ${tituloRareza}`)
+        .setDescription(lineas.join('\n'))
+        .setColor(color)
+        .setFooter({ text: 'Usa /mostrar <id> para mostrarla públicamente · Solo visible para ti' })
+        .setTimestamp();
+
+      await interaction.reply({ embeds: [embed], ephemeral: true });
+
+    } catch (err) {
+      console.error('[CMD] /inspeccionar error:', err.message);
+      await interaction.reply({ content: '❌ Error al inspeccionar.', ephemeral: true });
+    }
+  }
+
+  // ── /mostrar ───────────────────────────────────────────────────────────────
+  else if (commandName === 'mostrar') {
+    await interaction.deferReply();
+    try {
+      const id   = interaction.options.getInteger('id');
+      const item = getRamitaItem(id);
+
+      if (!item) {
+        return interaction.editReply({ content: `❌ No existe ninguna ramita con ID \`#${id}\`.` });
+      }
+      if (item.user_id !== user.id) {
+        return interaction.editReply({ content: '❌ Esa ramita no te pertenece.' });
+      }
+
+      const ramitaInfo = RAMITA_MAP[item.rareza] ?? { nombre: item.rareza, emoji: '🌿' };
+      const estiloInfo = ESTILOS.find(e => e.nombre === item.estilo) ?? { emoji: '⚔️' };
+      const formaInfo  = FORMAS.find(f => f.nombre === item.forma)  ?? { emoji: '🌿' };
+      const imagen     = getImagenRamita(item.rareza);
+
+      const embed = new EmbedBuilder()
+        .setTitle(`🌿 Ramita ${ramitaInfo.nombre} ${ramitaInfo.emoji} de ${user.username}`)
+        .addFields(
+          { name: `${estiloInfo.emoji} Estilo`, value: `**${item.estilo}**`,     inline: true  },
+          { name: `${formaInfo.emoji} Forma`,   value: `**${item.forma}**`,      inline: true  },
+          { name: '\u200b',                      value: '\u200b',                  inline: true  },
+          { name: '📏 Largo',                    value: `**${item.largo}**`,      inline: true  },
+          { name: '⚔️ Daño',                     value: `**${item.dano}**`,       inline: true  },
+          { name: '🪨 Grosor',                   value: `**${item.grosor}**`,     inline: true  },
+          { name: '⚡ Fuerza Total',             value: `# ${item.fuerza_total}`, inline: false },
+        )
+        .setColor(RAREZA_COLORES[ramitaInfo.nombre] ?? 0x2F3136)
+        .setThumbnail(user.displayAvatarURL())
+        .setFooter({ text: `ID #${item.id} · Recolectada por ${user.username}` })
+        .setTimestamp(item.created_at * 1000);
+
+      if (imagen) embed.setImage('attachment://ramita.png');
+      await interaction.editReply({ embeds: [embed], files: imagen ? [imagen] : [] });
+
+    } catch (err) {
+      console.error('[CMD] /mostrar error:', err.message);
+      await interaction.editReply({ content: '❌ Error al mostrar la ramita.' });
     }
   }
 });
