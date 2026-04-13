@@ -429,38 +429,22 @@ function iniciarEventoPlatano() {
 
         const platano = getPlatanoEvento();
 
-        const embed = new EmbedBuilder()
-          .setTitle(`🍌 ¡Plátano ${platano.nombre} ${platano.emoji} apareció!`)
-          .setDescription(
-            `> Un **Plátano ${platano.nombre}** ${platano.emoji} cayó del árbol.\n\n` +
-            `Reacciona con 🍌 en los próximos **30 segundos** para reclamarlo.`
-          )
-          .setColor(0xF1C40F)
-          .setTimestamp()
-          .setFooter({ text: '⚡ Primer reaccionante se lo lleva • Cada 30 min' });
-
-        const msg = await canal.send({ embeds: [embed] });
+        const msg = await canal.send({
+          content: `🍌 Ha caído un plátano **${platano.nombre}** ${platano.emoji} ¡agárrenlo reaccionando!`,
+        });
         await msg.react('🍌');
 
         const collector = msg.createReactionCollector({
           filter: (reaction, user) => reaction.emoji.name === '🍌' && !user.bot,
           max:  1,
-          time: EVENTO_REACTION_TIME,
+          time: 10_000,
         });
 
         collector.on('collect', async (_reaction, ganador) => {
           try {
             ensureUser(ganador.id, canal.guild.id);
             addPlatano(ganador.id, canal.guild.id, platano.columna);
-
-            await canal.send({
-              embeds: [new EmbedBuilder()
-                .setTitle('🎉 ¡Plátano reclamado!')
-                .setDescription(`<@${ganador.id}> se llevó el **Plátano ${platano.nombre}** ${platano.emoji}!`)
-                .setColor(0x57F287)
-                .setThumbnail(ganador.displayAvatarURL())
-                .setTimestamp()],
-            });
+            await canal.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado!`);
             console.log(`[PLÁTANO] Reclamado por ${ganador.tag} → ${platano.nombre}`);
           } catch (err) {
             console.error('[PLÁTANO] Error al procesar ganador:', err.message);
@@ -469,13 +453,7 @@ function iniciarEventoPlatano() {
 
         collector.on('end', (collected) => {
           if (collected.size === 0) {
-            canal.send({
-              embeds: [new EmbedBuilder()
-                .setTitle('⏰ Plátano expirado')
-                .setDescription('Nadie llegó a tiempo... El plátano se pudrió en el suelo.')
-                .setColor(0xED4245)
-                .setTimestamp()],
-            }).catch(() => {});
+            canal.send('😔 Qué pena, nadie ha agarrado el plátano.').catch(() => {});
           }
         });
 
