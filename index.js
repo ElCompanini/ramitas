@@ -54,7 +54,7 @@ if (!OWNER_ID)  { console.warn('[CONFIG] ⚠️  OWNER_ID no definido. /soltar_p
 // ─────────────────────────────────────────────────────────────────────────────
 const COOLDOWN_RECOLECTAR_MS  = 60 * 60 * 1000; // 1 hora
 const EVENTO_INTERVALO_MS     = 3_600_000;       // 60 min
-const PLATANO_INTERVALO_MS    = 30 * 60 * 1000;  // 30 min
+const PLATANO_INTERVALO_MS    = 15 * 60 * 1000;  // 15 min
 const EVENTO_REACTION_TIME    = 30_000;
 const AUTO_DELETE_MS          = 60_000;          // 1 minuto
 
@@ -429,54 +429,55 @@ function iniciarEventoHorario() {
 // ─────────────────────────────────────────────────────────────────────────────
 // EVENTO DE PLÁTANO — cada 30 min
 // ─────────────────────────────────────────────────────────────────────────────
+async function lanzarEventoPlatano() {
+  for (const channelId of EVENT_CHANNEL_IDS) {
+    try {
+      const canal = await client.channels.fetch(channelId).catch(() => null);
+      if (!canal || !canal.isTextBased()) continue;
+
+      const platano = getPlatanoEvento();
+
+      const msg = await canal.send({
+        content: `🍌 Ha caído un plátano **${platano.nombre}** ${platano.emoji} ¡agárrenlo reaccionando!`,
+      });
+      borrarDespues(msg);
+      await msg.react('🍌');
+
+      const collector = msg.createReactionCollector({
+        filter: (reaction, user) => reaction.emoji.name === '🍌' && !user.bot,
+        max:  1,
+        time: 15_000,
+      });
+
+      collector.on('collect', async (_reaction, ganador) => {
+        try {
+          ensureUser(ganador.id, canal.guild.id);
+          addPlatano(ganador.id, canal.guild.id, platano.columna);
+          borrarDespues(await canal.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado!`));
+          console.log(`[PLÁTANO] Reclamado por ${ganador.username} → ${platano.nombre}`);
+        } catch (err) {
+          console.error('[PLÁTANO] Error al procesar ganador:', err.message);
+        }
+      });
+
+      collector.on('end', (collected) => {
+        if (collected.size === 0) {
+          canal.send('😔 Qué pena, nadie ha agarrado el plátano.').then(borrarDespues).catch(() => {});
+        }
+      });
+
+      console.log(`[PLÁTANO] Lanzado en #${canal.name} → ${platano.nombre}`);
+    } catch (err) {
+      console.error('[PLÁTANO] Error:', err.message);
+    }
+  }
+}
+
 function iniciarEventoPlatano() {
   if (EVENT_CHANNEL_IDS.length === 0) return;
-
-  console.log(`[PLÁTANO] Iniciado (cada 30 min).`);
-
-  setInterval(async () => {
-    for (const channelId of EVENT_CHANNEL_IDS) {
-      try {
-        const canal = await client.channels.fetch(channelId).catch(() => null);
-        if (!canal || !canal.isTextBased()) continue;
-
-        const platano = getPlatanoEvento();
-
-        const msg = await canal.send({
-          content: `🍌 Ha caído un plátano **${platano.nombre}** ${platano.emoji} ¡agárrenlo reaccionando!`,
-        });
-        borrarDespues(msg);
-        await msg.react('🍌');
-
-        const collector = msg.createReactionCollector({
-          filter: (reaction, user) => reaction.emoji.name === '🍌' && !user.bot,
-          max:  1,
-          time: 15_000,
-        });
-
-        collector.on('collect', async (_reaction, ganador) => {
-          try {
-            ensureUser(ganador.id, canal.guild.id);
-            addPlatano(ganador.id, canal.guild.id, platano.columna);
-            borrarDespues(await canal.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado!`));
-            console.log(`[PLÁTANO] Reclamado por ${ganador.username} → ${platano.nombre}`);
-          } catch (err) {
-            console.error('[PLÁTANO] Error al procesar ganador:', err.message);
-          }
-        });
-
-        collector.on('end', (collected) => {
-          if (collected.size === 0) {
-            canal.send('😔 Qué pena, nadie ha agarrado el plátano.').then(borrarDespues).catch(() => {});
-          }
-        });
-
-        console.log(`[PLÁTANO] Lanzado en #${canal.name} → ${platano.nombre}`);
-      } catch (err) {
-        console.error('[PLÁTANO] Error:', err.message);
-      }
-    }
-  }, PLATANO_INTERVALO_MS);
+  console.log('[PLÁTANO] Iniciado (cada 15 min).');
+  lanzarEventoPlatano();
+  setInterval(lanzarEventoPlatano, PLATANO_INTERVALO_MS);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
