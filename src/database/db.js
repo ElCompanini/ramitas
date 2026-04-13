@@ -1,81 +1,43 @@
 'use strict';
 
-const initSqlJs = require('sql.js');
-const path      = require('path');
-const fs        = require('fs');
+const { createClient } = require('@libsql/client');
 
-const DB_PATH = path.join(__dirname, '..', '..', 'bot.sqlite');
+let client;
 
-// Instancia global de la base de datos (se llena en initDatabase)
-let db = null;
-
-/**
- * Guarda la base de datos en disco.
- * Se llama después de cada escritura para garantizar persistencia.
- */
-function saveDb() {
-  const data = db.export();
-  fs.writeFileSync(DB_PATH, Buffer.from(data));
+async function run(sql, params = []) {
+  await client.execute({ sql, args: params });
 }
 
-/**
- * Ejecuta una query sin retorno (CREATE, INSERT, UPDATE, DELETE).
- * Guarda en disco automáticamente.
- */
-function run(sql, params = []) {
-  db.run(sql, params);
-  saveDb();
+async function get(sql, params = []) {
+  const result = await client.execute({ sql, args: params });
+  return result.rows.length > 0 ? result.rows[0] : null;
 }
 
-/**
- * Obtiene una sola fila. Retorna objeto o null.
- */
-function get(sql, params = []) {
-  const stmt   = db.prepare(sql);
-  stmt.bind(params);
-  const hasRow = stmt.step();
-  const row    = hasRow ? stmt.getAsObject() : null;
-  stmt.free();
-  return row;
+async function all(sql, params = []) {
+  const result = await client.execute({ sql, args: params });
+  return result.rows;
 }
 
-/**
- * Obtiene todas las filas. Retorna array de objetos.
- */
-function all(sql, params = []) {
-  const stmt = db.prepare(sql);
-  stmt.bind(params);
-  const rows = [];
-  while (stmt.step()) rows.push(stmt.getAsObject());
-  stmt.free();
-  return rows;
-}
-
-/**
- * Inicializa la base de datos: carga el archivo si existe o crea uno nuevo.
- * Crea las tablas si no existen.
- */
 async function initDatabase() {
-  const SQL = await initSqlJs();
-
-  if (fs.existsSync(DB_PATH)) {
-    const fileBuffer = fs.readFileSync(DB_PATH);
-    db = new SQL.Database(fileBuffer);
-  } else {
-    db = new SQL.Database();
+  if (!process.env.TURSO_DATABASE_URL) {
+    throw new Error('[DB] ❌ Falta TURSO_DATABASE_URL en las variables de entorno.');
   }
 
-  db.run(`
-    CREATE TABLE IF NOT EXISTS users (
+  client = createClient({
+    url:       process.env.TURSO_DATABASE_URL,
+    authToken: process.env.TURSO_AUTH_TOKEN,
+  });
+
+  await client.batch([
+    `CREATE TABLE IF NOT EXISTS users (
       user_id         TEXT    NOT NULL,
       guild_id        TEXT    NOT NULL,
       coins           INTEGER NOT NULL DEFAULT 0,
       total_collected INTEGER NOT NULL DEFAULT 0,
       created_at      INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
       PRIMARY KEY (user_id, guild_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS ramitas (
+    )`,
+    `CREATE TABLE IF NOT EXISTS ramitas (
       user_id    TEXT    NOT NULL,
       guild_id   TEXT    NOT NULL,
       comun      INTEGER NOT NULL DEFAULT 0,
@@ -88,9 +50,8 @@ async function initDatabase() {
       cosmica    INTEGER NOT NULL DEFAULT 0,
       divina     INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (user_id, guild_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS platanos (
+    )`,
+    `CREATE TABLE IF NOT EXISTS platanos (
       user_id     TEXT    NOT NULL,
       guild_id    TEXT    NOT NULL,
       elementales INTEGER NOT NULL DEFAULT 0,
@@ -98,14 +59,12 @@ async function initDatabase() {
       galacticos  INTEGER NOT NULL DEFAULT 0,
       esencia     INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (user_id, guild_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS platano_points (
+    )`,
+    `CREATE TABLE IF NOT EXISTS platano_points (
       user_id TEXT    PRIMARY KEY,
       points  INTEGER NOT NULL DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS ramitas_items (
+    )`,
+    `CREATE TABLE IF NOT EXISTS ramitas_items (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id      TEXT    NOT NULL,
       guild_id     TEXT    NOT NULL,
@@ -117,11 +76,10 @@ async function initDatabase() {
       grosor       INTEGER NOT NULL,
       fuerza_total INTEGER NOT NULL,
       created_at   INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
-    );
-  `);
+    )`,
+  ], 'write');
 
-  saveDb();
-  console.log('[DB] Base de datos lista.');
+  console.log('[DB] Base de datos lista (Turso).');
 }
 
-module.exports = { initDatabase, run, get, all, saveDb };
+module.exports = { initDatabase, run, get, all };

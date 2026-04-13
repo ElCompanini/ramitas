@@ -106,17 +106,17 @@ const VALID_PLATANO_COLS = new Set(['elementales','avanzados','galacticos','esen
 // ─────────────────────────────────────────────────────────────────────────────
 // OPERACIONES DE BASE DE DATOS
 // ─────────────────────────────────────────────────────────────────────────────
-function ensureUser(userId, guildId) {
-  run('INSERT OR IGNORE INTO users    (user_id, guild_id) VALUES (?, ?)', [userId, guildId]);
-  run('INSERT OR IGNORE INTO ramitas  (user_id, guild_id) VALUES (?, ?)', [userId, guildId]);
-  run('INSERT OR IGNORE INTO platanos (user_id, guild_id) VALUES (?, ?)', [userId, guildId]);
+async function ensureUser(userId, guildId) {
+  await run('INSERT OR IGNORE INTO users    (user_id, guild_id) VALUES (?, ?)', [userId, guildId]);
+  await run('INSERT OR IGNORE INTO ramitas  (user_id, guild_id) VALUES (?, ?)', [userId, guildId]);
+  await run('INSERT OR IGNORE INTO platanos (user_id, guild_id) VALUES (?, ?)', [userId, guildId]);
 }
 
-function addRamita(userId, guildId, columna, stats) {
+async function addRamita(userId, guildId, columna, stats) {
   if (!VALID_RAMITA_COLS.has(columna)) throw new Error(`Columna inválida: ${columna}`);
-  run(`UPDATE ramitas SET ${columna} = ${columna} + 1 WHERE user_id = ? AND guild_id = ?`, [userId, guildId]);
-  run('UPDATE users SET total_collected = total_collected + 1 WHERE user_id = ? AND guild_id = ?', [userId, guildId]);
-  run(
+  await run(`UPDATE ramitas SET ${columna} = ${columna} + 1 WHERE user_id = ? AND guild_id = ?`, [userId, guildId]);
+  await run('UPDATE users SET total_collected = total_collected + 1 WHERE user_id = ? AND guild_id = ?', [userId, guildId]);
+  await run(
     `INSERT INTO ramitas_items (user_id, guild_id, rareza, estilo, forma, largo, dano, grosor, fuerza_total)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [userId, guildId, columna, stats.estilo.nombre, stats.forma.nombre,
@@ -132,12 +132,12 @@ const PLATANO_VALORES = Object.freeze({
   esencia:     { min: 110, max: 175 },
 });
 
-function addPlatano(userId, guildId, columna) {
+async function addPlatano(userId, guildId, columna) {
   if (!VALID_PLATANO_COLS.has(columna)) throw new Error(`Columna inválida: ${columna}`);
-  run(`UPDATE platanos SET ${columna} = ${columna} + 1 WHERE user_id = ? AND guild_id = ?`, [userId, guildId]);
+  await run(`UPDATE platanos SET ${columna} = ${columna} + 1 WHERE user_id = ? AND guild_id = ?`, [userId, guildId]);
   const { min, max } = PLATANO_VALORES[columna];
   const puntos = Math.floor(Math.random() * (max - min + 1)) + min;
-  run(
+  await run(
     `INSERT INTO platano_points (user_id, points) VALUES (?, ?)
      ON CONFLICT(user_id) DO UPDATE SET points = points + excluded.points`,
     [userId, puntos]
@@ -145,34 +145,36 @@ function addPlatano(userId, guildId, columna) {
   return puntos;
 }
 
-function getPlatanoPoints(userId) {
-  const row = get('SELECT points FROM platano_points WHERE user_id = ?', [userId]);
+async function getPlatanoPoints(userId) {
+  const row = await get('SELECT points FROM platano_points WHERE user_id = ?', [userId]);
   return row?.points ?? 0;
 }
 
-function transferirPuntos(fromId, toId, puntos) {
-  run(`INSERT INTO platano_points (user_id, points) VALUES (?, ?)
-       ON CONFLICT(user_id) DO UPDATE SET points = points - excluded.points`,
-    [fromId, puntos]);
-  run(`INSERT INTO platano_points (user_id, points) VALUES (?, ?)
-       ON CONFLICT(user_id) DO UPDATE SET points = points + excluded.points`,
-    [toId, puntos]);
+async function transferirPuntos(fromId, toId, puntos) {
+  await run(
+    `INSERT INTO platano_points (user_id, points) VALUES (?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET points = points - excluded.points`,
+    [fromId, puntos]
+  );
+  await run(
+    `INSERT INTO platano_points (user_id, points) VALUES (?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET points = points + excluded.points`,
+    [toId, puntos]
+  );
 }
 
 // Por servidor — usado en intercambios
-function getRamitasGuild(userId, guildId) {
+async function getRamitasGuild(userId, guildId) {
   return get('SELECT * FROM ramitas WHERE user_id = ? AND guild_id = ?', [userId, guildId]);
 }
 
-
-function transferirRamita(fromId, toId, guildId, columna) {
-  run(`UPDATE ramitas SET ${columna} = ${columna} - 1 WHERE user_id = ? AND guild_id = ?`, [fromId, guildId]);
-  run(`UPDATE ramitas SET ${columna} = ${columna} + 1 WHERE user_id = ? AND guild_id = ?`, [toId, guildId]);
+async function transferirRamita(fromId, toId, guildId, columna) {
+  await run(`UPDATE ramitas SET ${columna} = ${columna} - 1 WHERE user_id = ? AND guild_id = ?`, [fromId, guildId]);
+  await run(`UPDATE ramitas SET ${columna} = ${columna} + 1 WHERE user_id = ? AND guild_id = ?`, [toId, guildId]);
 }
 
-
 // Versiones globales (suma todos los servidores) — usadas en /perfil e /inventario
-function getRamitasGlobal(userId) {
+async function getRamitasGlobal(userId) {
   return get(
     `SELECT SUM(comun) AS comun, SUM(poco_comun) AS poco_comun, SUM(rara) AS rara,
             SUM(extrana) AS extrana, SUM(mistica) AS mistica, SUM(epica) AS epica,
@@ -182,7 +184,7 @@ function getRamitasGlobal(userId) {
   );
 }
 
-function getPlatanasGlobal(userId) {
+async function getPlatanasGlobal(userId) {
   return get(
     `SELECT SUM(elementales) AS elementales, SUM(avanzados) AS avanzados,
             SUM(galacticos) AS galacticos, SUM(esencia) AS esencia
@@ -191,14 +193,14 @@ function getPlatanasGlobal(userId) {
   );
 }
 
-function getUserGlobal(userId) {
+async function getUserGlobal(userId) {
   return get(
     'SELECT SUM(total_collected) AS total_collected FROM users WHERE user_id = ?',
     [userId]
   );
 }
 
-function getTopRecolecciones(limit = 10) {
+async function getTopRecolecciones(limit = 10) {
   return all(
     `SELECT user_id, SUM(total_collected) AS total
      FROM users GROUP BY user_id ORDER BY total DESC LIMIT ?`,
@@ -206,7 +208,7 @@ function getTopRecolecciones(limit = 10) {
   );
 }
 
-function getTopFuerza(limit = 10) {
+async function getTopFuerza(limit = 10) {
   return all(
     `SELECT user_id, MAX(fuerza_total) AS max_fuerza, rareza
      FROM ramitas_items GROUP BY user_id ORDER BY max_fuerza DESC LIMIT ?`,
@@ -214,7 +216,7 @@ function getTopFuerza(limit = 10) {
   );
 }
 
-function getTopPrestige(limit = 10) {
+async function getTopPrestige(limit = 10) {
   return all(
     `SELECT user_id,
        SUM(comun*1 + poco_comun*2 + rara*4 + extrana*8 + mistica*16
@@ -224,7 +226,7 @@ function getTopPrestige(limit = 10) {
   );
 }
 
-function getRamitasItems(userId, rareza, limit = 10) {
+async function getRamitasItems(userId, rareza, limit = 10) {
   if (rareza) {
     return all(
       `SELECT * FROM ramitas_items WHERE user_id = ? AND rareza = ? ORDER BY fuerza_total DESC LIMIT ?`,
@@ -237,12 +239,12 @@ function getRamitasItems(userId, rareza, limit = 10) {
   );
 }
 
-function getRamitaItem(id) {
+async function getRamitaItem(id) {
   return get('SELECT * FROM ramitas_items WHERE id = ?', [id]);
 }
 
-function getPosicionRecolecciones(userId) {
-  const row = get(
+async function getPosicionRecolecciones(userId) {
+  const row = await get(
     `SELECT COUNT(*) + 1 AS pos FROM (
        SELECT user_id, SUM(total_collected) AS total FROM users GROUP BY user_id
      ) AS r WHERE total > COALESCE((SELECT SUM(total_collected) FROM users WHERE user_id = ?), 0)`,
@@ -251,8 +253,8 @@ function getPosicionRecolecciones(userId) {
   return row?.pos ?? null;
 }
 
-function getPosicionFuerza(userId) {
-  const row = get(
+async function getPosicionFuerza(userId) {
+  const row = await get(
     `SELECT COUNT(*) + 1 AS pos FROM (
        SELECT user_id, MAX(fuerza_total) AS max_fuerza FROM ramitas_items GROUP BY user_id
      ) AS r WHERE max_fuerza > COALESCE((SELECT MAX(fuerza_total) FROM ramitas_items WHERE user_id = ?), 0)`,
@@ -261,8 +263,8 @@ function getPosicionFuerza(userId) {
   return row?.pos ?? null;
 }
 
-function getPosicionPrestige(userId) {
-  const row = get(
+async function getPosicionPrestige(userId) {
+  const row = await get(
     `SELECT COUNT(*) + 1 AS pos FROM (
        SELECT user_id,
          SUM(comun*1 + poco_comun*2 + rara*4 + extrana*8 + mistica*16
@@ -387,7 +389,7 @@ client.once('clientReady', async () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// EVENTO DE PLÁTANO — cada 30 min
+// EVENTO DE PLÁTANO — cada 5 min
 // ─────────────────────────────────────────────────────────────────────────────
 async function lanzarEventoPlatano() {
   for (const channelId of EVENT_CHANNEL_IDS) {
@@ -416,8 +418,8 @@ async function lanzarEventoPlatano() {
 
       collector.on('collect', async (_reaction, ganador) => {
         try {
-          ensureUser(ganador.id, canal.guild.id);
-          const pts = addPlatano(ganador.id, canal.guild.id, platano.columna);
+          await ensureUser(ganador.id, canal.guild.id);
+          const pts = await addPlatano(ganador.id, canal.guild.id, platano.columna);
           borrarDespues(await canal.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado! *(+${pts} 🍌)*`));
           console.log(`[PLÁTANO] Reclamado por ${ganador.username} → ${platano.nombre} (+${pts} pts)`);
         } catch (err) {
@@ -440,7 +442,7 @@ async function lanzarEventoPlatano() {
 
 function iniciarEventoPlatano() {
   if (EVENT_CHANNEL_IDS.length === 0) return;
-  console.log('[PLÁTANO] Iniciado (cada 15 min).');
+  console.log('[PLÁTANO] Iniciado (cada 5 min).');
   lanzarEventoPlatano();
   setInterval(lanzarEventoPlatano, PLATANO_INTERVALO_MS);
 }
@@ -470,7 +472,7 @@ client.on('interactionCreate', async (interaction) => {
 
       // Aceptó → mostrar selector de ramita
       trade.phase = 'counter';
-      const ramitasReceptor = getRamitasGuild(trade.receiverUserId, trade.guildId);
+      const ramitasReceptor = await getRamitasGuild(trade.receiverUserId, trade.guildId);
       const botonesRamita = [];
 
       for (const [col, info] of Object.entries(RAMITA_MAP)) {
@@ -526,8 +528,8 @@ client.on('interactionCreate', async (interaction) => {
       pendingTrades.delete(interaction.message.id);
 
       // Verificar que ambos sigan teniendo lo acordado
-      const ptsOferente     = getPlatanoPoints(trade.offererUserId);
-      const ramitasReceptor = getRamitasGuild(trade.receiverUserId, trade.guildId);
+      const ptsOferente     = await getPlatanoPoints(trade.offererUserId);
+      const ramitasReceptor = await getRamitasGuild(trade.receiverUserId, trade.guildId);
 
       if (ptsOferente < trade.puntos) {
         await interaction.update({ content: '❌ El oferente ya no tiene suficientes puntos.', components: [] });
@@ -541,8 +543,8 @@ client.on('interactionCreate', async (interaction) => {
       }
 
       // Ejecutar intercambio
-      transferirPuntos(trade.offererUserId, trade.receiverUserId, trade.puntos);
-      transferirRamita(trade.receiverUserId, trade.offererUserId, trade.guildId, rareza);
+      await transferirPuntos(trade.offererUserId, trade.receiverUserId, trade.puntos);
+      await transferirRamita(trade.receiverUserId, trade.offererUserId, trade.guildId, rareza);
 
       const ramitaInfo = RAMITA_MAP[rareza];
       const embed = new EmbedBuilder()
@@ -576,12 +578,12 @@ client.on('interactionCreate', async (interaction) => {
 
     await interaction.deferReply();
     try {
-      ensureUser(user.id, guildId);
+      await ensureUser(user.id, guildId);
       const ramita = getRamitaAleatoria();
       const stats  = generarStats(ramita.columna);
       const imagen = getImagenRamita(ramita.columna);
 
-      addRamita(user.id, guildId, ramita.columna, stats);
+      await addRamita(user.id, guildId, ramita.columna, stats);
 
       const embed = new EmbedBuilder()
         .setTitle(`🌿 ¡Ramita ${ramita.nombre} encontrada! ${ramita.emoji}`)
@@ -614,9 +616,9 @@ client.on('interactionCreate', async (interaction) => {
   else if (commandName === 'inventario') {
     await interaction.deferReply();
     try {
-      ensureUser(user.id, guildId);
-      const ramitas  = getRamitasGlobal(user.id);
-      const platanos = getPlatanasGlobal(user.id);
+      await ensureUser(user.id, guildId);
+      const ramitas  = await getRamitasGlobal(user.id);
+      const platanos = await getPlatanasGlobal(user.id);
 
       const embed = new EmbedBuilder()
         .setTitle(`📦 Inventario de ${user.username}`)
@@ -663,14 +665,14 @@ client.on('interactionCreate', async (interaction) => {
   else if (commandName === 'perfil') {
     await interaction.deferReply();
     try {
-      ensureUser(user.id, guildId);
-      const userData = getUserGlobal(user.id);
-      const ramitas  = getRamitasGlobal(user.id);
+      await ensureUser(user.id, guildId);
+      const userData = await getUserGlobal(user.id);
+      const ramitas  = await getRamitasGlobal(user.id);
 
       const COLS_R = ['comun','poco_comun','rara','extrana','mistica','epica','legendaria','cosmica','divina'];
 
       const totalRamitas  = COLS_R.reduce((s, k) => s + (ramitas[k]  ?? 0), 0);
-      const totalPlatanos = getPlatanoPoints(user.id);
+      const totalPlatanos = await getPlatanoPoints(user.id);
 
       let rarezaMax = '🟤 Común';
       for (const col of JERARQUIA_RAREZA) {
@@ -724,16 +726,16 @@ client.on('interactionCreate', async (interaction) => {
         return lines.join('\n');
       }
 
-      const [posR, posF, posP] = [
+      const [posR, posF, posP] = await Promise.all([
         getPosicionRecolecciones(user.id),
         getPosicionFuerza(user.id),
         getPosicionPrestige(user.id),
-      ];
+      ]);
 
       const [recolecciones, fuerza, prestige] = await Promise.all([
-        buildField(getTopRecolecciones(3), row => `🌿 **${row.total}** recolecciones`,                                        user.id, posR),
-        buildField(getTopFuerza(3),        row => `⚡ **${row.max_fuerza}** fuerza *(${NOMBRES_RAREZA[row.rareza] ?? row.rareza})*`, user.id, posF),
-        buildField(getTopPrestige(3),      row => `✨ **${row.score}** pts`,                                                   user.id, posP),
+        buildField(await getTopRecolecciones(3), row => `🌿 **${row.total}** recolecciones`,                                        user.id, posR),
+        buildField(await getTopFuerza(3),        row => `⚡ **${row.max_fuerza}** fuerza *(${NOMBRES_RAREZA[row.rareza] ?? row.rareza})*`, user.id, posF),
+        buildField(await getTopPrestige(3),      row => `✨ **${row.score}** pts`,                                                   user.id, posP),
       ]);
 
       const embed = new EmbedBuilder()
@@ -759,7 +761,7 @@ client.on('interactionCreate', async (interaction) => {
   else if (commandName === 'inspeccionar') {
     try {
       const rareza = interaction.options.getString('rareza');
-      const items  = getRamitasItems(user.id, rareza, 10);
+      const items  = await getRamitasItems(user.id, rareza, 10);
 
       if (items.length === 0) {
         return interaction.reply({
@@ -801,7 +803,7 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.deferReply();
     try {
       const id   = interaction.options.getInteger('id');
-      const item = getRamitaItem(id);
+      const item = await getRamitaItem(id);
 
       if (!item) {
         return interaction.editReply({ content: `❌ No existe ninguna ramita con ID \`#${id}\`.` });
@@ -852,7 +854,7 @@ client.on('interactionCreate', async (interaction) => {
       if (targetUser.bot)
         return borrarDespues(await interaction.editReply({ content: '❌ No puedes intercambiar con un bot.' }));
 
-      const ptsOferente = getPlatanoPoints(user.id);
+      const ptsOferente = await getPlatanoPoints(user.id);
       if (ptsOferente < puntos)
         return borrarDespues(await interaction.editReply({ content: `❌ No tienes suficientes 🍌 plátanos totales (tienes **${ptsOferente}**, necesitas **${puntos}**).` }));
 
@@ -871,8 +873,8 @@ client.on('interactionCreate', async (interaction) => {
         .setFooter({ text: `Solo ${targetUser.username} puede responder` })
         .setTimestamp();
 
-      ensureUser(user.id, guildId);
-      ensureUser(targetUser.id, guildId);
+      await ensureUser(user.id, guildId);
+      await ensureUser(targetUser.id, guildId);
 
       const reply = await interaction.editReply({ embeds: [embed], components: [row] });
 
@@ -903,7 +905,7 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.reply({ content: '✅ Soltando plátano...', ephemeral: true });
 
     const platano = getPlatanoEvento();
-    let texto = `🍌 Ha caído un plátano **${platano.nombre}** ${platano.emoji} ¡agárrenlo reaccionando!`;
+    const texto = `🍌 Ha caído un plátano **${platano.nombre}** ${platano.emoji} ¡agárrenlo reaccionando!`;
 
     try {
       const msg = await interaction.channel.send({ content: texto });
@@ -918,8 +920,8 @@ client.on('interactionCreate', async (interaction) => {
 
       collector.on('collect', async (_reaction, ganador) => {
         try {
-          ensureUser(ganador.id, guildId);
-          const pts = addPlatano(ganador.id, guildId, platano.columna);
+          await ensureUser(ganador.id, guildId);
+          const pts = await addPlatano(ganador.id, guildId, platano.columna);
           borrarDespues(await interaction.channel.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado! *(+${pts} 🍌)*`));
           console.log(`[ADMIN] Plátano manual reclamado por ${ganador.username} → ${platano.nombre} (+${pts} pts)`);
         } catch (err) {
@@ -951,7 +953,7 @@ process.on('uncaughtException', (error) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ARRANQUE (async para poder await initDatabase)
+// ARRANQUE
 // ─────────────────────────────────────────────────────────────────────────────
 (async () => {
   await initDatabase();
