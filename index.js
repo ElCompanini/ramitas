@@ -23,7 +23,6 @@ const fs   = require('fs');
 const { initDatabase, run, get, all } = require('./src/database/db');
 const {
   RAMITAS,
-  PLATANOS,
   ESTILOS,
   FORMAS,
   RAREZA_COLORES,
@@ -35,8 +34,7 @@ const {
 } = require('./src/utils/rng');
 
 // Lookups rápidos: columna → objeto
-const RAMITA_MAP  = Object.fromEntries(RAMITAS.map(r => [r.columna, r]));
-const PLATANO_MAP = Object.fromEntries(PLATANOS.map(p => [p.columna, p]));
+const RAMITA_MAP = Object.fromEntries(RAMITAS.map(r => [r.columna, r]));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VARIABLES DE ENTORNO
@@ -60,7 +58,7 @@ console.log('[CONFIG] variables disponibles:', Object.keys(process.env).filter(k
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTES DE TIEMPO
 // ─────────────────────────────────────────────────────────────────────────────
-const COOLDOWN_RECOLECTAR_MS  = 60 * 60 * 1000; // 1 hora
+const COOLDOWN_RECOLECTAR_MS  = 30 * 60 * 1000; // 30 min
 const PLATANO_INTERVALO_MS    = 5 * 60 * 1000;   // 5 min
 const AUTO_DELETE_MS          = 45_000;          // 45 segundos
 
@@ -126,9 +124,39 @@ function addRamita(userId, guildId, columna, stats) {
   );
 }
 
+// Valor en puntos por tipo de plátano (rangos no solapados)
+const PLATANO_VALORES = Object.freeze({
+  elementales: { min:   5, max:  15 },
+  avanzados:   { min:  20, max:  45 },
+  galacticos:  { min:  55, max:  95 },
+  esencia:     { min: 110, max: 175 },
+});
+
 function addPlatano(userId, guildId, columna) {
   if (!VALID_PLATANO_COLS.has(columna)) throw new Error(`Columna inválida: ${columna}`);
   run(`UPDATE platanos SET ${columna} = ${columna} + 1 WHERE user_id = ? AND guild_id = ?`, [userId, guildId]);
+  const { min, max } = PLATANO_VALORES[columna];
+  const puntos = Math.floor(Math.random() * (max - min + 1)) + min;
+  run(
+    `INSERT INTO platano_points (user_id, points) VALUES (?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET points = points + excluded.points`,
+    [userId, puntos]
+  );
+  return puntos;
+}
+
+function getPlatanoPoints(userId) {
+  const row = get('SELECT points FROM platano_points WHERE user_id = ?', [userId]);
+  return row?.points ?? 0;
+}
+
+function transferirPuntos(fromId, toId, puntos) {
+  run(`INSERT INTO platano_points (user_id, points) VALUES (?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET points = points - excluded.points`,
+    [fromId, puntos]);
+  run(`INSERT INTO platano_points (user_id, points) VALUES (?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET points = points + excluded.points`,
+    [toId, puntos]);
 }
 
 // Por servidor — usado en intercambios
@@ -136,19 +164,12 @@ function getRamitasGuild(userId, guildId) {
   return get('SELECT * FROM ramitas WHERE user_id = ? AND guild_id = ?', [userId, guildId]);
 }
 
-function getPlatanasGuild(userId, guildId) {
-  return get('SELECT * FROM platanos WHERE user_id = ? AND guild_id = ?', [userId, guildId]);
-}
 
 function transferirRamita(fromId, toId, guildId, columna) {
   run(`UPDATE ramitas SET ${columna} = ${columna} - 1 WHERE user_id = ? AND guild_id = ?`, [fromId, guildId]);
   run(`UPDATE ramitas SET ${columna} = ${columna} + 1 WHERE user_id = ? AND guild_id = ?`, [toId, guildId]);
 }
 
-function transferirPlatanos(fromId, toId, guildId, columna, cantidad) {
-  run(`UPDATE platanos SET ${columna} = ${columna} - ? WHERE user_id = ? AND guild_id = ?`, [cantidad, fromId, guildId]);
-  run(`UPDATE platanos SET ${columna} = ${columna} + ? WHERE user_id = ? AND guild_id = ?`, [cantidad, toId, guildId]);
-}
 
 // Versiones globales (suma todos los servidores) — usadas en /perfil e /inventario
 function getRamitasGlobal(userId) {
@@ -325,35 +346,12 @@ const slashCommands = [
     .toJSON(),
   new SlashCommandBuilder()
     .setName('intercambiar')
-    .setDescription('🔄 Ofrece 1 ramita a cambio de plátanos de otro usuario')
+    .setDescription('🔄 Ofrece puntos de plátano a cambio de una ramita')
     .addUserOption(opt =>
       opt.setName('usuario').setDescription('Usuario con quien intercambiar').setRequired(true)
     )
-    .addStringOption(opt =>
-      opt.setName('ramita').setDescription('Rareza de la ramita que ofreces').setRequired(true)
-        .addChoices(
-          { name: '🟤 Común',      value: 'comun'      },
-          { name: '🟢 Poco Común', value: 'poco_comun' },
-          { name: '🔵 Rara',       value: 'rara'       },
-          { name: '🟣 Extraña',    value: 'extrana'    },
-          { name: '⚪ Mística',    value: 'mistica'    },
-          { name: '🟠 Épica',      value: 'epica'      },
-          { name: '🟡 Legendaria', value: 'legendaria' },
-          { name: '🌌 Cósmica',    value: 'cosmica'    },
-          { name: '✨ Divina',     value: 'divina'     },
-        )
-    )
-    .addStringOption(opt =>
-      opt.setName('tipo_platano').setDescription('Tipo de plátano que pides').setRequired(true)
-        .addChoices(
-          { name: '🔥 Elementales', value: 'elementales' },
-          { name: '⚡ Avanzados',   value: 'avanzados'   },
-          { name: '🌠 Galácticos',  value: 'galacticos'  },
-          { name: '💠 Esencia',     value: 'esencia'     },
-        )
-    )
     .addIntegerOption(opt =>
-      opt.setName('cantidad').setDescription('Cantidad de plátanos que pides').setRequired(true).setMinValue(1)
+      opt.setName('platanos').setDescription('Cantidad de puntos de plátano que ofreces').setRequired(true).setMinValue(1)
     )
     .toJSON(),
 ];
@@ -419,9 +417,9 @@ async function lanzarEventoPlatano() {
       collector.on('collect', async (_reaction, ganador) => {
         try {
           ensureUser(ganador.id, canal.guild.id);
-          addPlatano(ganador.id, canal.guild.id, platano.columna);
-          borrarDespues(await canal.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado!`));
-          console.log(`[PLÁTANO] Reclamado por ${ganador.username} → ${platano.nombre}`);
+          const pts = addPlatano(ganador.id, canal.guild.id, platano.columna);
+          borrarDespues(await canal.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado! *(+${pts} pts)*`));
+          console.log(`[PLÁTANO] Reclamado por ${ganador.username} → ${platano.nombre} (+${pts} pts)`);
         } catch (err) {
           console.error('[PLÁTANO] Error al procesar ganador:', err.message);
         }
@@ -456,55 +454,110 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.isButton()) {
     const trade = pendingTrades.get(interaction.message.id);
 
-    if (!trade) {
-      return interaction.reply({ content: '❌ Esta propuesta ya expiró.', ephemeral: true });
-    }
-    if (interaction.user.id !== trade.receiverUserId) {
-      return interaction.reply({ content: '❌ Esta propuesta no es para ti.', ephemeral: true });
-    }
+    if (!trade) return interaction.reply({ content: '❌ Esta propuesta ya expiró.', ephemeral: true });
 
-    pendingTrades.delete(interaction.message.id);
+    // ─ Fase 1: Aceptar / Rechazar (solo el receptor)
+    if (trade.phase === 'offer') {
+      if (interaction.user.id !== trade.receiverUserId)
+        return interaction.reply({ content: '❌ Esta propuesta no es para ti.', ephemeral: true });
 
-    if (interaction.customId === 'trade_decline') {
-      await interaction.update({ content: '❌ Intercambio rechazado.', embeds: [], components: [] });
-      setTimeout(() => interaction.deleteReply().catch(() => {}), 5_000);
+      if (interaction.customId === 'trade_decline') {
+        pendingTrades.delete(interaction.message.id);
+        await interaction.update({ content: '❌ Intercambio rechazado.', embeds: [], components: [] });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 5_000);
+        return;
+      }
+
+      // Aceptó → mostrar selector de ramita
+      trade.phase = 'counter';
+      const ramitasReceptor = getRamitasGuild(trade.receiverUserId, trade.guildId);
+      const botonesRamita = [];
+
+      for (const [col, info] of Object.entries(RAMITA_MAP)) {
+        if ((ramitasReceptor?.[col] ?? 0) > 0) {
+          botonesRamita.push(
+            new ButtonBuilder()
+              .setCustomId(`trade_pick_${col}`)
+              .setLabel(`${info.emoji} ${info.nombre}`)
+              .setStyle(ButtonStyle.Primary)
+          );
+        }
+      }
+
+      if (botonesRamita.length === 0) {
+        pendingTrades.delete(interaction.message.id);
+        await interaction.update({ content: '❌ No tienes ninguna ramita para ofrecer.', embeds: [], components: [] });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 8_000);
+        return;
+      }
+
+      botonesRamita.push(
+        new ButtonBuilder().setCustomId('trade_cancel').setLabel('❌ Cancelar').setStyle(ButtonStyle.Danger)
+      );
+
+      const rows = [];
+      for (let i = 0; i < botonesRamita.length; i += 5)
+        rows.push(new ActionRowBuilder().addComponents(botonesRamita.slice(i, i + 5)));
+
+      await interaction.update({
+        content: `<@${trade.receiverUserId}> elige qué ramita darás a <@${trade.offererUserId}> a cambio de **${trade.puntos} pts**:`,
+        embeds: [],
+        components: rows,
+      });
       return;
     }
 
-    // Verificar que ambos sigan teniendo lo acordado
-    const ramitasOferente  = getRamitasGuild(trade.offererUserId, trade.guildId);
-    const platanasReceptor = getPlatanasGuild(trade.receiverUserId, trade.guildId);
+    // ─ Fase 2: Receptor elige ramita (solo el receptor)
+    if (trade.phase === 'counter') {
+      if (interaction.user.id !== trade.receiverUserId)
+        return interaction.reply({ content: '❌ No eres tú quien debe elegir.', ephemeral: true });
 
-    if ((ramitasOferente?.[trade.rareza] ?? 0) < 1) {
-      await interaction.update({ content: '❌ El intercambio falló: el oferente ya no tiene esa ramita.', embeds: [], components: [] });
-      setTimeout(() => interaction.deleteReply().catch(() => {}), 8_000);
+      if (interaction.customId === 'trade_cancel') {
+        pendingTrades.delete(interaction.message.id);
+        await interaction.update({ content: '❌ Intercambio cancelado.', components: [] });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 5_000);
+        return;
+      }
+
+      const rareza = interaction.customId.replace('trade_pick_', '');
+      if (!VALID_RAMITA_COLS.has(rareza))
+        return interaction.reply({ content: '❌ Rareza inválida.', ephemeral: true });
+
+      pendingTrades.delete(interaction.message.id);
+
+      // Verificar que ambos sigan teniendo lo acordado
+      const ptsOferente     = getPlatanoPoints(trade.offererUserId);
+      const ramitasReceptor = getRamitasGuild(trade.receiverUserId, trade.guildId);
+
+      if (ptsOferente < trade.puntos) {
+        await interaction.update({ content: '❌ El oferente ya no tiene suficientes puntos.', components: [] });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 8_000);
+        return;
+      }
+      if ((ramitasReceptor?.[rareza] ?? 0) < 1) {
+        await interaction.update({ content: '❌ Ya no tienes esa ramita.', components: [] });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 8_000);
+        return;
+      }
+
+      // Ejecutar intercambio
+      transferirPuntos(trade.offererUserId, trade.receiverUserId, trade.puntos);
+      transferirRamita(trade.receiverUserId, trade.offererUserId, trade.guildId, rareza);
+
+      const ramitaInfo = RAMITA_MAP[rareza];
+      const embed = new EmbedBuilder()
+        .setTitle('✅ ¡Intercambio completado!')
+        .setDescription(
+          `<@${trade.offererUserId}> dio **${trade.puntos} pts** y recibió ${ramitaInfo.emoji} **Ramita ${ramitaInfo.nombre}**\n` +
+          `<@${trade.receiverUserId}> dio la ramita y recibió **${trade.puntos} pts**`
+        )
+        .setColor(0x57F287)
+        .setTimestamp();
+
+      await interaction.update({ embeds: [embed], components: [] });
+      setTimeout(() => interaction.deleteReply().catch(() => {}), AUTO_DELETE_MS);
       return;
     }
-    if ((platanasReceptor?.[trade.platanoColumna] ?? 0) < trade.cantidad) {
-      await interaction.update({ content: '❌ El intercambio falló: ya no tienes suficientes plátanos.', embeds: [], components: [] });
-      setTimeout(() => interaction.deleteReply().catch(() => {}), 8_000);
-      return;
-    }
-
-    // Ejecutar intercambio
-    transferirRamita(trade.offererUserId, trade.receiverUserId, trade.guildId, trade.rareza);
-    transferirPlatanos(trade.receiverUserId, trade.offererUserId, trade.guildId, trade.platanoColumna, trade.cantidad);
-
-    const ramitaInfo  = RAMITA_MAP[trade.rareza];
-    const platanoInfo = PLATANO_MAP[trade.platanoColumna];
-
-    const embed = new EmbedBuilder()
-      .setTitle('✅ ¡Intercambio completado!')
-      .setDescription(
-        `<@${trade.offererUserId}> entregó ${ramitaInfo.emoji} **Ramita ${ramitaInfo.nombre}**\n` +
-        `<@${trade.receiverUserId}> entregó **${trade.cantidad}x Plátano ${platanoInfo.nombre}** ${platanoInfo.emoji}`
-      )
-      .setColor(0x57F287)
-      .setTimestamp();
-
-    await interaction.update({ embeds: [embed], components: [] });
-    setTimeout(() => interaction.deleteReply().catch(() => {}), AUTO_DELETE_MS);
-    return;
   }
 
   if (!interaction.isChatInputCommand()) return;
@@ -544,7 +597,7 @@ client.on('interactionCreate', async (interaction) => {
         )
         .setColor(RAREZA_COLORES[ramita.nombre] ?? 0x2F3136)
         .setThumbnail(user.displayAvatarURL())
-        .setFooter({ text: 'Cooldown: 1 hora • /inventario para ver tu colección' })
+        .setFooter({ text: 'Cooldown: 30 min • /inventario para ver tu colección' })
         .setTimestamp();
 
       if (imagen) embed.setImage('attachment://ramita.png');
@@ -793,55 +846,45 @@ client.on('interactionCreate', async (interaction) => {
   else if (commandName === 'intercambiar') {
     await interaction.deferReply();
     try {
-      const targetUser      = interaction.options.getUser('usuario');
-      const rareza          = interaction.options.getString('ramita');
-      const platanoColumna  = interaction.options.getString('tipo_platano');
-      const cantidad        = interaction.options.getInteger('cantidad');
+      const targetUser = interaction.options.getUser('usuario');
+      const puntos     = interaction.options.getInteger('platanos');
 
       if (targetUser.id === user.id)
         return borrarDespues(await interaction.editReply({ content: '❌ No puedes intercambiar contigo mismo.' }));
       if (targetUser.bot)
         return borrarDespues(await interaction.editReply({ content: '❌ No puedes intercambiar con un bot.' }));
 
-      ensureUser(user.id, guildId);
-      ensureUser(targetUser.id, guildId);
-
-      const ramitasOferente  = getRamitasGuild(user.id, guildId);
-      const platanasReceptor = getPlatanasGuild(targetUser.id, guildId);
-      const ramitaInfo       = RAMITA_MAP[rareza];
-      const platanoInfo      = PLATANO_MAP[platanoColumna];
-
-      if ((ramitasOferente?.[rareza] ?? 0) < 1)
-        return borrarDespues(await interaction.editReply({ content: `❌ No tienes ninguna **Ramita ${ramitaInfo.nombre}** en este servidor.` }));
-
-      if ((platanasReceptor?.[platanoColumna] ?? 0) < cantidad)
-        return borrarDespues(await interaction.editReply({ content: `❌ <@${targetUser.id}> no tiene ${cantidad}x **Plátano ${platanoInfo.nombre}** en este servidor.` }));
+      const ptsOferente = getPlatanoPoints(user.id);
+      if (ptsOferente < puntos)
+        return borrarDespues(await interaction.editReply({ content: `❌ No tienes suficientes puntos (tienes **${ptsOferente}**, necesitas **${puntos}**).` }));
 
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('trade_accept').setLabel('✅ Aceptar').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('trade_accept').setLabel('✅ Aceptar y elegir ramita').setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId('trade_decline').setLabel('❌ Rechazar').setStyle(ButtonStyle.Danger),
       );
 
       const embed = new EmbedBuilder()
         .setTitle('🔄 Propuesta de Intercambio')
-        .setDescription(`<@${user.id}> quiere intercambiar con <@${targetUser.id}>`)
-        .addFields(
-          { name: `${user.username} ofrece`,        value: `${ramitaInfo.emoji} 1x Ramita **${ramitaInfo.nombre}**`,            inline: true },
-          { name: `${targetUser.username} debe dar`, value: `${platanoInfo.emoji} ${cantidad}x Plátano **${platanoInfo.nombre}**`, inline: true },
+        .setDescription(
+          `<@${user.id}> te ofrece **${puntos} pts de plátano** a cambio de una de tus ramitas.\n\n` +
+          `Si aceptas, elige qué ramita darás a cambio.`
         )
         .setColor(0x5865F2)
         .setFooter({ text: `Solo ${targetUser.username} puede responder` })
         .setTimestamp();
 
+      ensureUser(user.id, guildId);
+      ensureUser(targetUser.id, guildId);
+
       const reply = await interaction.editReply({ embeds: [embed], components: [row] });
 
       pendingTrades.set(reply.id, {
-        offererUserId: user.id,
+        phase: 'offer',
+        offererUserId:  user.id,
         receiverUserId: targetUser.id,
-        rareza, platanoColumna, cantidad, guildId,
+        puntos, guildId,
       });
 
-      // Expirar después de AUTO_DELETE_MS
       setTimeout(() => {
         pendingTrades.delete(reply.id);
         reply.delete().catch(() => {});
@@ -878,9 +921,9 @@ client.on('interactionCreate', async (interaction) => {
       collector.on('collect', async (_reaction, ganador) => {
         try {
           ensureUser(ganador.id, guildId);
-          addPlatano(ganador.id, guildId, platano.columna);
-          borrarDespues(await interaction.channel.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado!`));
-          console.log(`[ADMIN] Plátano manual reclamado por ${ganador.username} → ${platano.nombre}`);
+          const pts = addPlatano(ganador.id, guildId, platano.columna);
+          borrarDespues(await interaction.channel.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado! *(+${pts} pts)*`));
+          console.log(`[ADMIN] Plátano manual reclamado por ${ganador.username} → ${platano.nombre} (+${pts} pts)`);
         } catch (err) {
           console.error('[ADMIN] Error al procesar ganador:', err.message);
         }

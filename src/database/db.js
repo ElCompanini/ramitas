@@ -100,6 +100,11 @@ async function initDatabase() {
       PRIMARY KEY (user_id, guild_id)
     );
 
+    CREATE TABLE IF NOT EXISTS platano_points (
+      user_id TEXT    PRIMARY KEY,
+      points  INTEGER NOT NULL DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS ramitas_items (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id      TEXT    NOT NULL,
