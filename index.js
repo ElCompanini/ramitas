@@ -39,6 +39,7 @@ const RAMITA_MAP = Object.fromEntries(RAMITAS.map(r => [r.columna, r]));
 // ─────────────────────────────────────────────────────────────────────────────
 const TOKEN             = process.env.TOKEN;
 const CLIENT_ID         = process.env.CLIENT_ID;
+const OWNER_ID          = process.env.OWNER_ID ?? '';
 const EVENT_CHANNEL_IDS = (process.env.EVENT_CHANNEL_IDS || '')
   .split(',')
   .map(id => id.trim())
@@ -46,6 +47,7 @@ const EVENT_CHANNEL_IDS = (process.env.EVENT_CHANNEL_IDS || '')
 
 if (!TOKEN)     { console.error('[CONFIG] ❌ Falta TOKEN en .env');     process.exit(1); }
 if (!CLIENT_ID) { console.error('[CONFIG] ❌ Falta CLIENT_ID en .env'); process.exit(1); }
+if (!OWNER_ID)  { console.warn('[CONFIG] ⚠️  OWNER_ID no definido. /soltar_platano deshabilitado.'); }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTES DE TIEMPO
@@ -275,6 +277,10 @@ const slashCommands = [
     )
     .toJSON(),
   new SlashCommandBuilder()
+    .setName('soltar_platano')
+    .setDescription('🔒 [Admin] Lanza un evento de plátano inmediatamente')
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName('mostrar')
     .setDescription('📢 Muestra una de tus ramitas públicamente')
     .addIntegerOption(opt =>
@@ -437,7 +443,7 @@ function iniciarEventoPlatano() {
         const collector = msg.createReactionCollector({
           filter: (reaction, user) => reaction.emoji.name === '🍌' && !user.bot,
           max:  1,
-          time: 10_000,
+          time: 15_000,
         });
 
         collector.on('collect', async (_reaction, ganador) => {
@@ -445,7 +451,7 @@ function iniciarEventoPlatano() {
             ensureUser(ganador.id, canal.guild.id);
             addPlatano(ganador.id, canal.guild.id, platano.columna);
             await canal.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado!`);
-            console.log(`[PLÁTANO] Reclamado por ${ganador.tag} → ${platano.nombre}`);
+            console.log(`[PLÁTANO] Reclamado por ${ganador.username} → ${platano.nombre}`);
           } catch (err) {
             console.error('[PLÁTANO] Error al procesar ganador:', err.message);
           }
@@ -748,6 +754,49 @@ client.on('interactionCreate', async (interaction) => {
     } catch (err) {
       console.error('[CMD] /mostrar error:', err.message);
       await interaction.editReply({ content: '❌ Error al mostrar la ramita.' });
+    }
+  }
+
+  // ── /soltar_platano ────────────────────────────────────────────────────────
+  else if (commandName === 'soltar_platano') {
+    if (!OWNER_ID || user.id !== OWNER_ID) {
+      return interaction.reply({ content: '🔒 No tienes permiso para usar este comando.', ephemeral: true });
+    }
+
+    await interaction.reply({ content: '✅ Soltando plátano...', ephemeral: true });
+
+    const platano = getPlatanoEvento();
+    let texto = `🍌 Ha caído un plátano **${platano.nombre}** ${platano.emoji} ¡agárrenlo reaccionando!`;
+
+    try {
+      const msg = await interaction.channel.send({ content: texto });
+      await msg.react('🍌');
+
+      const collector = msg.createReactionCollector({
+        filter: (reaction, u) => reaction.emoji.name === '🍌' && !u.bot,
+        max:  1,
+        time: 15_000,
+      });
+
+      collector.on('collect', async (_reaction, ganador) => {
+        try {
+          ensureUser(ganador.id, guildId);
+          addPlatano(ganador.id, guildId, platano.columna);
+          await interaction.channel.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado!`);
+          console.log(`[ADMIN] Plátano manual reclamado por ${ganador.username} → ${platano.nombre}`);
+        } catch (err) {
+          console.error('[ADMIN] Error al procesar ganador:', err.message);
+        }
+      });
+
+      collector.on('end', (collected) => {
+        if (collected.size === 0) {
+          interaction.channel.send('😔 Qué pena, nadie ha agarrado el plátano.').catch(() => {});
+        }
+      });
+
+    } catch (err) {
+      console.error('[ADMIN] /soltar_platano error:', err.message);
     }
   }
 });
