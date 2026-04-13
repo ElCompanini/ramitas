@@ -56,7 +56,7 @@ console.log('[CONFIG] variables disponibles:', Object.keys(process.env).filter(k
 // CONSTANTES DE TIEMPO
 // ─────────────────────────────────────────────────────────────────────────────
 const COOLDOWN_RECOLECTAR_MS  = 60 * 60 * 1000; // 1 hora
-const PLATANO_INTERVALO_MS    = 15 * 60 * 1000;  // 15 min
+const PLATANO_INTERVALO_MS    = 2 * 60 * 1000;   // 2 min (pruebas)
 const AUTO_DELETE_MS          = 45_000;          // 45 segundos
 
 function borrarDespues(msg) {
@@ -334,8 +334,13 @@ client.once('clientReady', async () => {
 async function lanzarEventoPlatano() {
   for (const channelId of EVENT_CHANNEL_IDS) {
     try {
-      const canal = await client.channels.fetch(channelId).catch(() => null);
-      if (!canal || !canal.isTextBased()) continue;
+      console.log(`[PLÁTANO] Intentando canal ${channelId}...`);
+      const canal = await client.channels.fetch(channelId).catch((e) => { console.error('[PLÁTANO] fetch error:', e.message); return null; });
+      if (!canal || !canal.isTextBased()) {
+        console.warn(`[PLÁTANO] Canal ${channelId} no válido o no es texto. canal=${canal?.type}`);
+        continue;
+      }
+      console.log(`[PLÁTANO] Canal OK: #${canal.name}`);
 
       const platano = getPlatanoEvento();
 
