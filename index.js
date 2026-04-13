@@ -56,6 +56,11 @@ const COOLDOWN_RECOLECTAR_MS  = 60 * 60 * 1000; // 1 hora
 const EVENTO_INTERVALO_MS     = 3_600_000;       // 60 min
 const PLATANO_INTERVALO_MS    = 30 * 60 * 1000;  // 30 min
 const EVENTO_REACTION_TIME    = 30_000;
+const AUTO_DELETE_MS          = 60_000;          // 1 minuto
+
+function borrarDespues(msg) {
+  setTimeout(() => msg.delete().catch(() => {}), AUTO_DELETE_MS);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SISTEMA DE COOLDOWNS — Map nativo en memoria
@@ -364,6 +369,7 @@ function iniciarEventoHorario() {
         if (imagen) embed.setImage('attachment://ramita.png');
 
         const msg = await canal.send({ embeds: [embed], files: imagen ? [imagen] : [] });
+        borrarDespues(msg);
         await msg.react('🍌');
 
         const collector = msg.createReactionCollector({
@@ -384,7 +390,7 @@ function iniciarEventoHorario() {
               texto += `\n🎁 ¡Y también obtuvo un **Plátano ${platano.nombre}** ${platano.emoji}!`;
             }
 
-            await canal.send({
+            const msgGanador = await canal.send({
               embeds: [new EmbedBuilder()
                 .setTitle('🎉 ¡Evento Reclamado!')
                 .setDescription(texto)
@@ -392,6 +398,7 @@ function iniciarEventoHorario() {
                 .setThumbnail(ganador.displayAvatarURL())
                 .setTimestamp()],
             });
+            borrarDespues(msgGanador);
             console.log(`[EVENTO] Reclamado por ${ganador.tag} → ${ramita.nombre}`);
           } catch (err) {
             console.error('[EVENTO] Error al procesar ganador:', err.message);
@@ -406,7 +413,7 @@ function iniciarEventoHorario() {
                 .setDescription('Nadie reaccionó a tiempo... Las ramitas volvieron al bosque.')
                 .setColor(0xED4245)
                 .setTimestamp()],
-            }).catch(() => {});
+            }).then(borrarDespues).catch(() => {});
           }
         });
 
@@ -438,6 +445,7 @@ function iniciarEventoPlatano() {
         const msg = await canal.send({
           content: `🍌 Ha caído un plátano **${platano.nombre}** ${platano.emoji} ¡agárrenlo reaccionando!`,
         });
+        borrarDespues(msg);
         await msg.react('🍌');
 
         const collector = msg.createReactionCollector({
@@ -450,7 +458,7 @@ function iniciarEventoPlatano() {
           try {
             ensureUser(ganador.id, canal.guild.id);
             addPlatano(ganador.id, canal.guild.id, platano.columna);
-            await canal.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado!`);
+            borrarDespues(await canal.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado!`));
             console.log(`[PLÁTANO] Reclamado por ${ganador.username} → ${platano.nombre}`);
           } catch (err) {
             console.error('[PLÁTANO] Error al procesar ganador:', err.message);
@@ -459,7 +467,7 @@ function iniciarEventoPlatano() {
 
         collector.on('end', (collected) => {
           if (collected.size === 0) {
-            canal.send('😔 Qué pena, nadie ha agarrado el plátano.').catch(() => {});
+            canal.send('😔 Qué pena, nadie ha agarrado el plátano.').then(borrarDespues).catch(() => {});
           }
         });
 
@@ -517,11 +525,11 @@ client.on('interactionCreate', async (interaction) => {
 
       if (imagen) embed.setImage('attachment://ramita.png');
 
-      await interaction.editReply({ embeds: [embed], files: imagen ? [imagen] : [] });
+      borrarDespues(await interaction.editReply({ embeds: [embed], files: imagen ? [imagen] : [] }));
 
     } catch (err) {
       console.error('[CMD] /recolectar error:', err.message);
-      await interaction.editReply({ content: '❌ Error al recolectar. Inténtalo de nuevo.' });
+      borrarDespues(await interaction.editReply({ content: '❌ Error al recolectar. Inténtalo de nuevo.' }));
     }
   }
 
@@ -566,11 +574,11 @@ client.on('interactionCreate', async (interaction) => {
         .setThumbnail(user.displayAvatarURL())
         .setTimestamp();
 
-      await interaction.editReply({ embeds: [embed] });
+      borrarDespues(await interaction.editReply({ embeds: [embed] }));
 
     } catch (err) {
       console.error('[CMD] /inventario error:', err.message);
-      await interaction.editReply({ content: '❌ Error al obtener el inventario.' });
+      borrarDespues(await interaction.editReply({ content: '❌ Error al obtener el inventario.' }));
     }
   }
 
@@ -607,11 +615,11 @@ client.on('interactionCreate', async (interaction) => {
         .setThumbnail(user.displayAvatarURL())
         .setTimestamp();
 
-      await interaction.editReply({ embeds: [embed] });
+      borrarDespues(await interaction.editReply({ embeds: [embed] }));
 
     } catch (err) {
       console.error('[CMD] /perfil error:', err.message);
-      await interaction.editReply({ content: '❌ Error al obtener el perfil.' });
+      borrarDespues(await interaction.editReply({ content: '❌ Error al obtener el perfil.' }));
     }
   }
 
@@ -664,11 +672,11 @@ client.on('interactionCreate', async (interaction) => {
         .setFooter({ text: 'Ranking global · todos los servidores · top 3 por categoría' })
         .setTimestamp();
 
-      await interaction.editReply({ embeds: [embed] });
+      borrarDespues(await interaction.editReply({ embeds: [embed] }));
 
     } catch (err) {
       console.error('[CMD] /top error:', err.message);
-      await interaction.editReply({ content: '❌ Error al obtener el ranking.' });
+      borrarDespues(await interaction.editReply({ content: '❌ Error al obtener el ranking.' }));
     }
   }
 
@@ -749,11 +757,11 @@ client.on('interactionCreate', async (interaction) => {
         .setTimestamp(item.created_at * 1000);
 
       if (imagen) embed.setImage('attachment://ramita.png');
-      await interaction.editReply({ embeds: [embed], files: imagen ? [imagen] : [] });
+      borrarDespues(await interaction.editReply({ embeds: [embed], files: imagen ? [imagen] : [] }));
 
     } catch (err) {
       console.error('[CMD] /mostrar error:', err.message);
-      await interaction.editReply({ content: '❌ Error al mostrar la ramita.' });
+      borrarDespues(await interaction.editReply({ content: '❌ Error al mostrar la ramita.' }));
     }
   }
 
@@ -770,6 +778,7 @@ client.on('interactionCreate', async (interaction) => {
 
     try {
       const msg = await interaction.channel.send({ content: texto });
+      borrarDespues(msg);
       await msg.react('🍌');
 
       const collector = msg.createReactionCollector({
@@ -782,7 +791,7 @@ client.on('interactionCreate', async (interaction) => {
         try {
           ensureUser(ganador.id, guildId);
           addPlatano(ganador.id, guildId, platano.columna);
-          await interaction.channel.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado!`);
+          borrarDespues(await interaction.channel.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado!`));
           console.log(`[ADMIN] Plátano manual reclamado por ${ganador.username} → ${platano.nombre}`);
         } catch (err) {
           console.error('[ADMIN] Error al procesar ganador:', err.message);
@@ -791,7 +800,7 @@ client.on('interactionCreate', async (interaction) => {
 
       collector.on('end', (collected) => {
         if (collected.size === 0) {
-          interaction.channel.send('😔 Qué pena, nadie ha agarrado el plátano.').catch(() => {});
+          interaction.channel.send('😔 Qué pena, nadie ha agarrado el plátano.').then(borrarDespues).catch(() => {});
         }
       });
 
