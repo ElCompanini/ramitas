@@ -418,7 +418,7 @@ async function lanzarEventoPlatano() {
         try {
           ensureUser(ganador.id, canal.guild.id);
           const pts = addPlatano(ganador.id, canal.guild.id, platano.columna);
-          borrarDespues(await canal.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado! *(+${pts} 🍌 plátanos totales)*`));
+          borrarDespues(await canal.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado! *(+${pts} 🍌)*`));
           console.log(`[PLÁTANO] Reclamado por ${ganador.username} → ${platano.nombre} (+${pts} pts)`);
         } catch (err) {
           console.error('[PLÁTANO] Error al procesar ganador:', err.message);
@@ -666,13 +666,11 @@ client.on('interactionCreate', async (interaction) => {
       ensureUser(user.id, guildId);
       const userData = getUserGlobal(user.id);
       const ramitas  = getRamitasGlobal(user.id);
-      const platanos = getPlatanasGlobal(user.id);
 
       const COLS_R = ['comun','poco_comun','rara','extrana','mistica','epica','legendaria','cosmica','divina'];
-      const COLS_P = ['elementales','avanzados','galacticos','esencia'];
 
       const totalRamitas  = COLS_R.reduce((s, k) => s + (ramitas[k]  ?? 0), 0);
-      const totalPlatanos = COLS_P.reduce((s, k) => s + (platanos[k] ?? 0), 0);
+      const totalPlatanos = getPlatanoPoints(user.id);
 
       let rarezaMax = '🟤 Común';
       for (const col of JERARQUIA_RAREZA) {
@@ -922,7 +920,7 @@ client.on('interactionCreate', async (interaction) => {
         try {
           ensureUser(ganador.id, guildId);
           const pts = addPlatano(ganador.id, guildId, platano.columna);
-          borrarDespues(await interaction.channel.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado! *(+${pts} 🍌 plátanos totales)*`));
+          borrarDespues(await interaction.channel.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado! *(+${pts} 🍌)*`));
           console.log(`[ADMIN] Plátano manual reclamado por ${ganador.username} → ${platano.nombre} (+${pts} pts)`);
         } catch (err) {
           console.error('[ADMIN] Error al procesar ganador:', err.message);
