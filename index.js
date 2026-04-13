@@ -27,6 +27,7 @@ const {
   NOMBRES_RAREZA,
   getRamitaAleatoria,
   getPlatanoAleatorio,
+  getPlatanoEvento,
   generarStats,
 } = require('./src/utils/rng');
 
@@ -49,9 +50,10 @@ if (!CLIENT_ID) { console.error('[CONFIG] ❌ Falta CLIENT_ID en .env'); process
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTES DE TIEMPO
 // ─────────────────────────────────────────────────────────────────────────────
-const COOLDOWN_RECOLECTAR_MS = 60 * 60 * 1000; // 1 hora
-const EVENTO_INTERVALO_MS    = 3_600_000;
-const EVENTO_REACTION_TIME   = 30_000;
+const COOLDOWN_RECOLECTAR_MS  = 60 * 60 * 1000; // 1 hora
+const EVENTO_INTERVALO_MS     = 3_600_000;       // 60 min
+const PLATANO_INTERVALO_MS    = 30 * 60 * 1000;  // 30 min
+const EVENTO_REACTION_TIME    = 30_000;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SISTEMA DE COOLDOWNS — Map nativo en memoria
@@ -312,6 +314,7 @@ client.once('clientReady', async () => {
   }
 
   iniciarEventoHorario();
+  iniciarEventoPlatano();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -411,6 +414,80 @@ function iniciarEventoHorario() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// EVENTO DE PLÁTANO — cada 30 min
+// ─────────────────────────────────────────────────────────────────────────────
+function iniciarEventoPlatano() {
+  if (EVENT_CHANNEL_IDS.length === 0) return;
+
+  console.log(`[PLÁTANO] Iniciado (cada 30 min).`);
+
+  setInterval(async () => {
+    for (const channelId of EVENT_CHANNEL_IDS) {
+      try {
+        const canal = await client.channels.fetch(channelId).catch(() => null);
+        if (!canal || !canal.isTextBased()) continue;
+
+        const platano = getPlatanoEvento();
+
+        const embed = new EmbedBuilder()
+          .setTitle(`🍌 ¡Plátano ${platano.nombre} ${platano.emoji} apareció!`)
+          .setDescription(
+            `> Un **Plátano ${platano.nombre}** ${platano.emoji} cayó del árbol.\n\n` +
+            `Reacciona con 🍌 en los próximos **30 segundos** para reclamarlo.`
+          )
+          .setColor(0xF1C40F)
+          .setTimestamp()
+          .setFooter({ text: '⚡ Primer reaccionante se lo lleva • Cada 30 min' });
+
+        const msg = await canal.send({ embeds: [embed] });
+        await msg.react('🍌');
+
+        const collector = msg.createReactionCollector({
+          filter: (reaction, user) => reaction.emoji.name === '🍌' && !user.bot,
+          max:  1,
+          time: EVENTO_REACTION_TIME,
+        });
+
+        collector.on('collect', async (_reaction, ganador) => {
+          try {
+            ensureUser(ganador.id, canal.guild.id);
+            addPlatano(ganador.id, canal.guild.id, platano.columna);
+
+            await canal.send({
+              embeds: [new EmbedBuilder()
+                .setTitle('🎉 ¡Plátano reclamado!')
+                .setDescription(`<@${ganador.id}> se llevó el **Plátano ${platano.nombre}** ${platano.emoji}!`)
+                .setColor(0x57F287)
+                .setThumbnail(ganador.displayAvatarURL())
+                .setTimestamp()],
+            });
+            console.log(`[PLÁTANO] Reclamado por ${ganador.tag} → ${platano.nombre}`);
+          } catch (err) {
+            console.error('[PLÁTANO] Error al procesar ganador:', err.message);
+          }
+        });
+
+        collector.on('end', (collected) => {
+          if (collected.size === 0) {
+            canal.send({
+              embeds: [new EmbedBuilder()
+                .setTitle('⏰ Plátano expirado')
+                .setDescription('Nadie llegó a tiempo... El plátano se pudrió en el suelo.')
+                .setColor(0xED4245)
+                .setTimestamp()],
+            }).catch(() => {});
+          }
+        });
+
+        console.log(`[PLÁTANO] Lanzado en #${canal.name} → ${platano.nombre}`);
+      } catch (err) {
+        console.error('[PLÁTANO] Error:', err.message);
+      }
+    }
+  }, PLATANO_INTERVALO_MS);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SLASH COMMANDS HANDLER
 // ─────────────────────────────────────────────────────────────────────────────
 client.on('interactionCreate', async (interaction) => {
@@ -431,21 +508,15 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.deferReply();
     try {
       ensureUser(user.id, guildId);
-      const ramita  = getRamitaAleatoria();
-      const platano = getPlatanoAleatorio();
-      const stats   = generarStats(ramita.columna);
-      const imagen  = getImagenRamita(ramita.columna);
+      const ramita = getRamitaAleatoria();
+      const stats  = generarStats(ramita.columna);
+      const imagen = getImagenRamita(ramita.columna);
 
       addRamita(user.id, guildId, ramita.columna, stats);
 
-      const bonusTexto = platano
-        ? `\n🎁 **¡BONUS!** También encontraste un **Plátano ${platano.nombre}** ${platano.emoji}!`
-        : '';
-      if (platano) addPlatano(user.id, guildId, platano.columna);
-
       const embed = new EmbedBuilder()
         .setTitle(`🌿 ¡Ramita ${ramita.nombre} encontrada! ${ramita.emoji}`)
-        .setDescription(`¡Encontraste una ramita en el bosque!${bonusTexto}`)
+        .setDescription('¡Encontraste una ramita en el bosque!')
         .addFields(
           { name: `${stats.estilo.emoji} Estilo`,        value: `**${stats.estilo.nombre}**`,    inline: true  },
           { name: `${stats.forma.emoji} Forma`,          value: `**${stats.forma.nombre}**`,     inline: true  },

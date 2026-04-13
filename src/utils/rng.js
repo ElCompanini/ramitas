@@ -134,6 +134,19 @@ function getPlatanoAleatorio() {
   return null;
 }
 
+// Siempre retorna un plátano — para el evento dedicado cada 30 min.
+// Usa las mismas categorías con probabilidades relativas (sin el 30.5 % de drop).
+const PLATANO_TOTAL = PLATANOS.reduce((s, p) => s + p.prob, 0);
+function getPlatanoEvento() {
+  const roll = Math.random() * PLATANO_TOTAL;
+  let acumulado = 0;
+  for (const platano of PLATANOS) {
+    acumulado += platano.prob;
+    if (roll < acumulado) return platano;
+  }
+  return PLATANOS[0];
+}
+
 /**
  * Genera estadísticas aleatorias para una ramita según su rareza.
  * Fórmula de fuerza total:
@@ -168,5 +181,6 @@ module.exports = {
   NOMBRES_RAREZA,
   getRamitaAleatoria,
   getPlatanoAleatorio,
+  getPlatanoEvento,
   generarStats,
 };
