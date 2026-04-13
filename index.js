@@ -40,7 +40,7 @@ const RAMITA_MAP = Object.fromEntries(RAMITAS.map(r => [r.columna, r]));
 const TOKEN             = process.env.TOKEN;
 const CLIENT_ID         = process.env.CLIENT_ID;
 const OWNER_ID          = process.env.OWNER_ID ?? '';
-const EVENT_CHANNEL_IDS = (process.env.EVENT_CHANNEL_IDS || '')
+const EVENT_CHANNEL_IDS = (process.env.EVENT_CHANNEL_IDS || process.env.EVENT_CHANNEL_ID || '')
   .split(',')
   .map(id => id.trim())
   .filter(Boolean);
