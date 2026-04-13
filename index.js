@@ -48,6 +48,9 @@ const EVENT_CHANNEL_IDS = (process.env.EVENT_CHANNEL_IDS || process.env.EVENT_CH
 if (!TOKEN)     { console.error('[CONFIG] ❌ Falta TOKEN en .env');     process.exit(1); }
 if (!CLIENT_ID) { console.error('[CONFIG] ❌ Falta CLIENT_ID en .env'); process.exit(1); }
 if (!OWNER_ID)  { console.warn('[CONFIG] ⚠️  OWNER_ID no definido. /soltar_platano deshabilitado.'); }
+console.log('[CONFIG] EVENT_CHANNEL_IDS raw:', JSON.stringify(process.env.EVENT_CHANNEL_IDS));
+console.log('[CONFIG] EVENT_CHANNEL_ID  raw:', JSON.stringify(process.env.EVENT_CHANNEL_ID));
+console.log('[CONFIG] canales detectados:', EVENT_CHANNEL_IDS);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTES DE TIEMPO
