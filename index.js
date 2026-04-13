@@ -26,7 +26,6 @@ const {
   JERARQUIA_RAREZA,
   NOMBRES_RAREZA,
   getRamitaAleatoria,
-  getPlatanoAleatorio,
   getPlatanoEvento,
   generarStats,
 } = require('./src/utils/rng');
@@ -57,10 +56,8 @@ console.log('[CONFIG] variables disponibles:', Object.keys(process.env).filter(k
 // CONSTANTES DE TIEMPO
 // ─────────────────────────────────────────────────────────────────────────────
 const COOLDOWN_RECOLECTAR_MS  = 60 * 60 * 1000; // 1 hora
-const EVENTO_INTERVALO_MS     = 3_600_000;       // 60 min
 const PLATANO_INTERVALO_MS    = 15 * 60 * 1000;  // 15 min
-const EVENTO_REACTION_TIME    = 30_000;
-const AUTO_DELETE_MS          = 60_000;          // 1 minuto
+const AUTO_DELETE_MS          = 45_000;          // 45 segundos
 
 function borrarDespues(msg) {
   setTimeout(() => msg.delete().catch(() => {}), AUTO_DELETE_MS);
@@ -328,107 +325,8 @@ client.once('clientReady', async () => {
     console.error('[CMD] Error al registrar comandos:', err.message);
   }
 
-  iniciarEventoHorario();
   iniciarEventoPlatano();
 });
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EVENTO HORARIO
-// ─────────────────────────────────────────────────────────────────────────────
-function iniciarEventoHorario() {
-  if (EVENT_CHANNEL_IDS.length === 0) {
-    console.warn('[EVENTO] EVENT_CHANNEL_IDS no definido. Evento horario deshabilitado.');
-    return;
-  }
-
-  console.log(`[EVENTO] Iniciado (${EVENT_CHANNEL_IDS.length} canal(es), cada 60 min).`);
-
-  setInterval(async () => {
-    for (const channelId of EVENT_CHANNEL_IDS) {
-      try {
-        const canal = await client.channels.fetch(channelId).catch(() => null);
-        if (!canal || !canal.isTextBased()) {
-          console.warn(`[EVENTO] Canal ${channelId} no encontrado.`);
-          continue;
-        }
-
-        const ramita  = getRamitaAleatoria();
-        const platano = getPlatanoAleatorio();
-        const imagen  = getImagenRamita(ramita.columna);
-
-        const desc = [
-          `> Una **Ramita ${ramita.nombre}** ${ramita.emoji} ha aparecido en el bosque!`,
-          '',
-          `Reacciona con 🍌 en los próximos **30 segundos** para reclamarla.`,
-          platano ? `\n✨ **BONUS:** ¡También hay un **Plátano ${platano.nombre}** ${platano.emoji}!` : '',
-        ].join('\n');
-
-        const embed = new EmbedBuilder()
-          .setTitle('🌿 ¡Evento de Recolección Horario!')
-          .setDescription(desc)
-          .setColor(RAREZA_COLORES[ramita.nombre] ?? 0x2F3136)
-          .setTimestamp()
-          .setFooter({ text: '⚡ Primer reaccionante se lo lleva • Cada hora' });
-
-        if (imagen) embed.setImage('attachment://ramita.png');
-
-        const msg = await canal.send({ embeds: [embed], files: imagen ? [imagen] : [] });
-        borrarDespues(msg);
-        await msg.react('🍌');
-
-        const collector = msg.createReactionCollector({
-          filter: (reaction, user) => reaction.emoji.name === '🍌' && !user.bot,
-          max:  1,
-          time: EVENTO_REACTION_TIME,
-        });
-
-        collector.on('collect', async (_reaction, ganador) => {
-          try {
-            ensureUser(ganador.id, canal.guild.id);
-            const statsEvento = generarStats(ramita.columna);
-            addRamita(ganador.id, canal.guild.id, ramita.columna, statsEvento);
-
-            let texto = `<@${ganador.id}> reclamó la **Ramita ${ramita.nombre}** ${ramita.emoji}!`;
-            if (platano) {
-              addPlatano(ganador.id, canal.guild.id, platano.columna);
-              texto += `\n🎁 ¡Y también obtuvo un **Plátano ${platano.nombre}** ${platano.emoji}!`;
-            }
-
-            const msgGanador = await canal.send({
-              embeds: [new EmbedBuilder()
-                .setTitle('🎉 ¡Evento Reclamado!')
-                .setDescription(texto)
-                .setColor(0x57F287)
-                .setThumbnail(ganador.displayAvatarURL())
-                .setTimestamp()],
-            });
-            borrarDespues(msgGanador);
-            console.log(`[EVENTO] Reclamado por ${ganador.tag} → ${ramita.nombre}`);
-          } catch (err) {
-            console.error('[EVENTO] Error al procesar ganador:', err.message);
-          }
-        });
-
-        collector.on('end', (collected) => {
-          if (collected.size === 0) {
-            canal.send({
-              embeds: [new EmbedBuilder()
-                .setTitle('⏰ Evento Expirado')
-                .setDescription('Nadie reaccionó a tiempo... Las ramitas volvieron al bosque.')
-                .setColor(0xED4245)
-                .setTimestamp()],
-            }).then(borrarDespues).catch(() => {});
-          }
-        });
-
-        console.log(`[EVENTO] Lanzado en #${canal.name} → ${ramita.nombre}${platano ? ` + ${platano.nombre}` : ''}`);
-
-      } catch (err) {
-        console.error('[EVENTO] Error:', err.message);
-      }
-    }
-  }, EVENTO_INTERVALO_MS);
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EVENTO DE PLÁTANO — cada 30 min
