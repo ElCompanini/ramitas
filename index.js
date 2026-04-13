@@ -418,7 +418,7 @@ async function lanzarEventoPlatano() {
         try {
           ensureUser(ganador.id, canal.guild.id);
           const pts = addPlatano(ganador.id, canal.guild.id, platano.columna);
-          borrarDespues(await canal.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado! *(+${pts} pts)*`));
+          borrarDespues(await canal.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado! *(+${pts} 🍌 plátanos totales)*`));
           console.log(`[PLÁTANO] Reclamado por ${ganador.username} → ${platano.nombre} (+${pts} pts)`);
         } catch (err) {
           console.error('[PLÁTANO] Error al procesar ganador:', err.message);
@@ -500,7 +500,7 @@ client.on('interactionCreate', async (interaction) => {
         rows.push(new ActionRowBuilder().addComponents(botonesRamita.slice(i, i + 5)));
 
       await interaction.update({
-        content: `<@${trade.receiverUserId}> elige qué ramita darás a <@${trade.offererUserId}> a cambio de **${trade.puntos} pts**:`,
+        content: `<@${trade.receiverUserId}> elige qué ramita darás a <@${trade.offererUserId}> a cambio de **${trade.puntos} 🍌 plátanos totales**:`,
         embeds: [],
         components: rows,
       });
@@ -548,8 +548,8 @@ client.on('interactionCreate', async (interaction) => {
       const embed = new EmbedBuilder()
         .setTitle('✅ ¡Intercambio completado!')
         .setDescription(
-          `<@${trade.offererUserId}> dio **${trade.puntos} pts** y recibió ${ramitaInfo.emoji} **Ramita ${ramitaInfo.nombre}**\n` +
-          `<@${trade.receiverUserId}> dio la ramita y recibió **${trade.puntos} pts**`
+          `<@${trade.offererUserId}> dio **${trade.puntos} 🍌 plátanos totales** y recibió ${ramitaInfo.emoji} **Ramita ${ramitaInfo.nombre}**\n` +
+          `<@${trade.receiverUserId}> dio la ramita y recibió **${trade.puntos} 🍌 plátanos totales**`
         )
         .setColor(0x57F287)
         .setTimestamp();
@@ -856,7 +856,7 @@ client.on('interactionCreate', async (interaction) => {
 
       const ptsOferente = getPlatanoPoints(user.id);
       if (ptsOferente < puntos)
-        return borrarDespues(await interaction.editReply({ content: `❌ No tienes suficientes puntos (tienes **${ptsOferente}**, necesitas **${puntos}**).` }));
+        return borrarDespues(await interaction.editReply({ content: `❌ No tienes suficientes 🍌 plátanos totales (tienes **${ptsOferente}**, necesitas **${puntos}**).` }));
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('trade_accept').setLabel('✅ Aceptar y elegir ramita').setStyle(ButtonStyle.Success),
@@ -866,7 +866,7 @@ client.on('interactionCreate', async (interaction) => {
       const embed = new EmbedBuilder()
         .setTitle('🔄 Propuesta de Intercambio')
         .setDescription(
-          `<@${user.id}> te ofrece **${puntos} pts de plátano** a cambio de una de tus ramitas.\n\n` +
+          `<@${user.id}> te ofrece **${puntos} 🍌 plátanos totales** a cambio de una de tus ramitas.\n\n` +
           `Si aceptas, elige qué ramita darás a cambio.`
         )
         .setColor(0x5865F2)
@@ -922,7 +922,7 @@ client.on('interactionCreate', async (interaction) => {
         try {
           ensureUser(ganador.id, guildId);
           const pts = addPlatano(ganador.id, guildId, platano.columna);
-          borrarDespues(await interaction.channel.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado! *(+${pts} pts)*`));
+          borrarDespues(await interaction.channel.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado! *(+${pts} 🍌 plátanos totales)*`));
           console.log(`[ADMIN] Plátano manual reclamado por ${ganador.username} → ${platano.nombre} (+${pts} pts)`);
         } catch (err) {
           console.error('[ADMIN] Error al procesar ganador:', err.message);
