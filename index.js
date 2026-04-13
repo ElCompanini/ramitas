@@ -216,12 +216,9 @@ async function getTopFuerza(limit = 10) {
   );
 }
 
-async function getTopPrestige(limit = 10) {
+async function getTopPlatanoPoints(limit = 10) {
   return all(
-    `SELECT user_id,
-       SUM(comun*1 + poco_comun*2 + rara*4 + extrana*8 + mistica*16
-           + epica*32 + legendaria*64 + cosmica*128 + divina*256) AS score
-     FROM ramitas GROUP BY user_id ORDER BY score DESC LIMIT ?`,
+    `SELECT user_id, points AS score FROM platano_points ORDER BY points DESC LIMIT ?`,
     [limit]
   );
 }
@@ -263,17 +260,10 @@ async function getPosicionFuerza(userId) {
   return row?.pos ?? null;
 }
 
-async function getPosicionPrestige(userId) {
+async function getPosicionPlatanoPoints(userId) {
   const row = await get(
-    `SELECT COUNT(*) + 1 AS pos FROM (
-       SELECT user_id,
-         SUM(comun*1 + poco_comun*2 + rara*4 + extrana*8 + mistica*16
-             + epica*32 + legendaria*64 + cosmica*128 + divina*256) AS score
-       FROM ramitas GROUP BY user_id
-     ) AS r WHERE score > COALESCE(
-       (SELECT SUM(comun*1 + poco_comun*2 + rara*4 + extrana*8 + mistica*16
-                + epica*32 + legendaria*64 + cosmica*128 + divina*256)
-        FROM ramitas WHERE user_id = ?), 0)`,
+    `SELECT COUNT(*) + 1 AS pos FROM platano_points
+     WHERE points > COALESCE((SELECT points FROM platano_points WHERE user_id = ?), 0)`,
     [userId]
   );
   return row?.pos ?? null;
@@ -729,13 +719,13 @@ client.on('interactionCreate', async (interaction) => {
       const [posR, posF, posP] = await Promise.all([
         getPosicionRecolecciones(user.id),
         getPosicionFuerza(user.id),
-        getPosicionPrestige(user.id),
+        getPosicionPlatanoPoints(user.id),
       ]);
 
       const [recolecciones, fuerza, prestige] = await Promise.all([
         buildField(await getTopRecolecciones(3), row => `🌿 **${row.total}** recolecciones`,                                        user.id, posR),
         buildField(await getTopFuerza(3),        row => `⚡ **${row.max_fuerza}** fuerza *(${NOMBRES_RAREZA[row.rareza] ?? row.rareza})*`, user.id, posF),
-        buildField(await getTopPrestige(3),      row => `✨ **${row.score}** pts`,                                                   user.id, posP),
+        buildField(await getTopPlatanoPoints(3),  row => `🍌 **${row.score}** plátanos totales`,                                      user.id, posP),
       ]);
 
       const embed = new EmbedBuilder()
@@ -743,7 +733,7 @@ client.on('interactionCreate', async (interaction) => {
         .addFields(
           { name: '🌿 Más Recolecciones', value: recolecciones, inline: false },
           { name: '⚡ Mayor Fuerza',       value: fuerza,        inline: false },
-          { name: '✨ Mayor Prestige',     value: prestige,      inline: false },
+          { name: '🍌 Más Plátanos',        value: prestige,      inline: false },
         )
         .setColor(0xFFD700)
         .setFooter({ text: 'Ranking global · todos los servidores · top 3 por categoría' })
