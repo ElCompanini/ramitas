@@ -1445,11 +1445,11 @@ client.on('interactionCreate', async (interaction) => {
     await removeItem(user.id, 'caca_de_toki');
 
     const MENSAJES_CACA = [
-      `💩 ¡**${user.username}** le lanzó una Caca de Toki a <@${targetUser.id}>! ¡Qué asco!`,
-      `💩 <@${targetUser.id}> ha recibido un impacto directo de caca de parte de **${user.username}**! ¡Splat!`,
-      `💩 **${user.username}** sacó la **Caca de Toki** y la estrelló contra <@${targetUser.id}>. No había escapatoria.`,
-      `💩 *La caca vuela por los aires...* ¡<@${targetUser.id}> no pudo esquivarla! Cortesía de **${user.username}**.`,
-      `💩 **${user.username}** no dudó ni un segundo antes de lanzarle su **Caca de Toki** a <@${targetUser.id}>. Devastador.`,
+      `💩 ¡**${user.username}** le lanzó una Caca de Toki a <@${targetUser.id}>! ¡Quedó pasao a mierda!`,
+      `💩 <@${targetUser.id}> ha recibido un charchazo de caca en la cara de parte de **${user.username}**`,
+      `💩 **${user.username}** sacó la **Caca de Toki** y se la tiró a <@${targetUser.id}>. No había escapatoria, una pena.`,
+      `💩 *La caca vuela por el aire pé huevon...* ¡<@${targetUser.id}> no pudo esquivarla! Pastel cortesía de **${user.username}**.`,
+      `💩 **${user.username}** no pensó niuna wea antes de tirarle su **Caca de Toki** a <@${targetUser.id}>. Devastador, es brigido esa wea.`,
     ];
     const msg = MENSAJES_CACA[Math.floor(Math.random() * MENSAJES_CACA.length)];
     borrarDespues(await interaction.reply({ content: msg }));
