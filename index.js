@@ -94,6 +94,7 @@ const bossState = {
   maxHp:         BOSS_MAX_HP,
   participantes: new Map(), // userId → danoTotal
   mensajes:      [],        // referencias a los mensajes del boss para editar
+  msgVida:       null,      // último mensaje público de HP tras un ataque
 };
 
 function hpBar(current, max, len = 18) {
@@ -533,6 +534,7 @@ async function avisarBossProximo(minutosRestantes) {
 // ─────────────────────────────────────────────────────────────────────────────
 async function matarBoss() {
   bossState.activo = false;
+  if (bossState.msgVida) { try { await bossState.msgVida.delete(); } catch {} bossState.msgVida = null; }
 
   const participantes = [...bossState.participantes.entries()];
   if (participantes.length === 0) return;
@@ -593,11 +595,12 @@ async function matarBoss() {
 async function lanzarBoss() {
   if (bossState.activo) return;
 
-  bossState.activo = true;
-  bossState.hp     = BOSS_MAX_HP;
-  bossState.maxHp  = BOSS_MAX_HP;
+  bossState.activo   = true;
+  bossState.hp       = BOSS_MAX_HP;
+  bossState.maxHp    = BOSS_MAX_HP;
   bossState.participantes.clear();
   bossState.mensajes = [];
+  bossState.msgVida  = null;
 
   await resetAllHp();
 
@@ -618,8 +621,9 @@ async function lanzarBoss() {
   setTimeout(async () => {
     // Si sigue activo, despawnear
     if (bossState.activo) {
-      bossState.activo = false;
+      bossState.activo  = false;
       bossState.participantes.clear();
+      if (bossState.msgVida) { try { await bossState.msgVida.delete(); } catch {} bossState.msgVida = null; }
 
       const embedEscape = new EmbedBuilder()
         .setTitle('🦍 El Gran Toki ha escapado...')
@@ -1416,6 +1420,24 @@ client.on('interactionCreate', async (interaction) => {
       .setTimestamp();
 
     await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+
+    // Borrar mensaje de vida anterior y publicar uno nuevo en el canal
+    if (bossState.msgVida) {
+      try { await bossState.msgVida.delete(); } catch {}
+      bossState.msgVida = null;
+    }
+    if (bossVivo) {
+      const pct      = Math.round((bossState.hp / bossState.maxHp) * 100);
+      const color    = pct > 50 ? 0xFF4444 : pct > 25 ? 0xFF8C00 : 0x8B0000;
+      const vidaEmbed = new EmbedBuilder()
+        .setTitle('🦍 Gran Toki — Vida restante')
+        .setDescription(hpBar(bossState.hp, bossState.maxHp, 20))
+        .addFields({ name: '👥 Participantes', value: `**${bossState.participantes.size}** mono(s) en batalla`, inline: true })
+        .setColor(color)
+        .setFooter({ text: `Último ataque: ${user.username} · -${danoJugador} HP` })
+        .setTimestamp();
+      try { bossState.msgVida = await interaction.channel.send({ embeds: [vidaEmbed] }); } catch {}
+    }
 
     await actualizarBossMsg();
     if (!bossVivo) await matarBoss();
