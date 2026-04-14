@@ -671,9 +671,17 @@ async function lanzarEventoPlatano() {
 
 function iniciarEventoPlatano() {
   if (EVENT_CHANNEL_IDS.length === 0) return;
-  console.log('[PLÁTANO] Iniciado (cada 5 min).');
-  lanzarEventoPlatano();
-  setInterval(lanzarEventoPlatano, PLATANO_INTERVALO_MS);
+
+  const ahora     = Date.now();
+  const siguiente = Math.ceil(ahora / PLATANO_INTERVALO_MS) * PLATANO_INTERVALO_MS;
+  const delay     = siguiente - ahora;
+
+  console.log(`[PLÁTANO] Primer evento en ${Math.round(delay / 1000)}s (alineado a múltiplos de 5 min).`);
+
+  setTimeout(() => {
+    lanzarEventoPlatano();
+    setInterval(lanzarEventoPlatano, PLATANO_INTERVALO_MS);
+  }, delay);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
