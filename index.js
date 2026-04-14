@@ -13,6 +13,7 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  MessageFlags,
   REST,
   Routes,
 } = require('discord.js');
@@ -714,7 +715,7 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.isButton() && interaction.customId.startsWith('comprar_')) {
     const itemKey = interaction.customId.replace('comprar_', '');
     const item    = TIENDA_ITEMS[itemKey];
-    if (!item) return interaction.reply({ content: '❌ Objeto desconocido.', ephemeral: true });
+    if (!item) return interaction.reply({ content: '❌ Objeto desconocido.', flags: MessageFlags.Ephemeral });
 
     const userId = interaction.user.id;
     await ensureUser(userId, interaction.guildId);
@@ -723,7 +724,7 @@ client.on('interactionCreate', async (interaction) => {
     if (puntos < item.precio) {
       return interaction.reply({
         content: `❌ No tienes suficientes 🍌 plátanos (tienes **${puntos}**, necesitas **${item.precio}**).`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -737,7 +738,7 @@ client.on('interactionCreate', async (interaction) => {
     const nuevoPts = await getPlatanoPoints(userId);
     return interaction.reply({
       content: `✅ ¡Compraste **${item.emoji} ${item.nombre}** por **${item.precio} 🍌**! Te quedan **${nuevoPts} 🍌**.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -745,12 +746,12 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.isButton()) {
     const trade = pendingTrades.get(interaction.message.id);
 
-    if (!trade) return interaction.reply({ content: '❌ Esta propuesta ya expiró.', ephemeral: true });
+    if (!trade) return interaction.reply({ content: '❌ Esta propuesta ya expiró.', flags: MessageFlags.Ephemeral });
 
     // ─ Fase 1: Aceptar / Rechazar (solo el receptor)
     if (trade.phase === 'offer') {
       if (interaction.user.id !== trade.receiverUserId)
-        return interaction.reply({ content: '❌ Esta propuesta no es para ti.', ephemeral: true });
+        return interaction.reply({ content: '❌ Esta propuesta no es para ti.', flags: MessageFlags.Ephemeral });
 
       if (interaction.customId === 'trade_decline') {
         pendingTrades.delete(interaction.message.id);
@@ -801,7 +802,7 @@ client.on('interactionCreate', async (interaction) => {
     // ─ Fase 2: Receptor elige ramita (solo el receptor)
     if (trade.phase === 'counter') {
       if (interaction.user.id !== trade.receiverUserId)
-        return interaction.reply({ content: '❌ No eres tú quien debe elegir.', ephemeral: true });
+        return interaction.reply({ content: '❌ No eres tú quien debe elegir.', flags: MessageFlags.Ephemeral });
 
       if (interaction.customId === 'trade_cancel') {
         pendingTrades.delete(interaction.message.id);
@@ -812,7 +813,7 @@ client.on('interactionCreate', async (interaction) => {
 
       const rareza = interaction.customId.replace('trade_pick_', '');
       if (!VALID_RAMITA_COLS.has(rareza))
-        return interaction.reply({ content: '❌ Rareza inválida.', ephemeral: true });
+        return interaction.reply({ content: '❌ Rareza inválida.', flags: MessageFlags.Ephemeral });
 
       pendingTrades.delete(interaction.message.id);
 
@@ -861,7 +862,7 @@ client.on('interactionCreate', async (interaction) => {
     if (cd.onCooldown) {
       return interaction.reply({
         content: `⏳ Espera **${cd.timeLeft}s** antes de volver a recolectar.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -1099,7 +1100,7 @@ client.on('interactionCreate', async (interaction) => {
           content: rareza
             ? `📭 No tienes ramitas **${NOMBRES_RAREZA[rareza]}** todavía.`
             : '📭 Todavía no tienes ninguna ramita.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 
@@ -1121,11 +1122,11 @@ client.on('interactionCreate', async (interaction) => {
         .setFooter({ text: 'Usa /mostrar <id> para mostrarla públicamente · Solo visible para ti' })
         .setTimestamp();
 
-      await interaction.reply({ embeds: [embed], ephemeral: true });
+      await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
 
     } catch (err) {
       console.error('[CMD] /inspeccionar error:', err.message);
-      await interaction.reply({ content: '❌ Error al inspeccionar.', ephemeral: true });
+      await interaction.reply({ content: '❌ Error al inspeccionar.', flags: MessageFlags.Ephemeral });
     }
   }
 
@@ -1234,15 +1235,15 @@ client.on('interactionCreate', async (interaction) => {
     const item = await getRamitaItem(id);
 
     if (!item)
-      return interaction.reply({ content: `❌ No existe ninguna ramita con ID \`#${id}\`.`, ephemeral: true });
+      return interaction.reply({ content: `❌ No existe ninguna ramita con ID \`#${id}\`.`, flags: MessageFlags.Ephemeral });
     if (item.user_id !== user.id)
-      return interaction.reply({ content: '❌ Esa ramita no te pertenece.', ephemeral: true });
+      return interaction.reply({ content: '❌ Esa ramita no te pertenece.', flags: MessageFlags.Ephemeral });
 
     await setArma(user.id, id);
     const info = RAMITA_MAP[item.rareza] ?? { emoji: '🌿', nombre: item.rareza };
     return interaction.reply({
       content: `✅ Equipaste ${info.emoji} **Ramita ${info.nombre}** \`#${id}\` como arma *(⚡ ${item.fuerza_total} fuerza)*.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -1256,30 +1257,30 @@ client.on('interactionCreate', async (interaction) => {
     if (cantidad <= 0)
       return interaction.reply({
         content: `❌ No tienes ningún **${esc.emoji} ${esc.nombre}** en tu inventario. ¡Derrota al Gran Toki para conseguirlo!`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
 
     await setEscudo(user.id, tipo);
     return interaction.reply({
       content: `✅ Equipaste **${esc.emoji} ${esc.nombre}** *(absorbe ${esc.redMin}–${esc.redMax} de daño por golpe)*.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
   // ── /atacar ───────────────────────────────────────────────────────────────
   else if (commandName === 'atacar') {
     if (!bossState.activo)
-      return interaction.reply({ content: '😴 No hay ningún jefe activo ahora mismo. Aparece cada 2 horas.', ephemeral: true });
+      return interaction.reply({ content: '😴 No hay ningún jefe activo ahora mismo. Aparece cada 2 horas.', flags: MessageFlags.Ephemeral });
 
     const cd = checkCooldown(user.id, 'atacar', 5_000);
     if (cd.onCooldown)
-      return interaction.reply({ content: `⏳ Espera **${cd.timeLeft}s** para volver a atacar.`, ephemeral: true });
+      return interaction.reply({ content: `⏳ Espera **${cd.timeLeft}s** para volver a atacar.`, flags: MessageFlags.Ephemeral });
 
     await ensureUser(user.id, guildId);
 
     const hp = await getPlayerHp(user.id);
     if (hp <= 0)
-      return interaction.reply({ content: '💀 Estás muerto. No puedes atacar hasta que aparezca el próximo jefe.', ephemeral: true });
+      return interaction.reply({ content: '💀 Estás muerto. No puedes atacar hasta que aparezca el próximo jefe.', flags: MessageFlags.Ephemeral });
 
     // Daño del jugador
     const equipo = await getEquipamiento(user.id);
@@ -1326,7 +1327,7 @@ client.on('interactionCreate', async (interaction) => {
       .setColor(bossVivo ? 0xFF4444 : 0xFFD700)
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
 
     await actualizarBossMsg();
     if (!bossVivo) await matarBoss();
@@ -1342,13 +1343,13 @@ client.on('interactionCreate', async (interaction) => {
     if (cantidad <= 0)
       return interaction.reply({
         content: `❌ No tienes ningún **${info.emoji} ${info.nombre}** en tu inventario. Cómpralo en \`/mercader\`.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
 
     if (await itemActivo(user.id, objeto))
       return interaction.reply({
         content: `⚠️ Ya tienes **${info.emoji} ${info.nombre}** activado. Se aplicará en tu próxima \`/recolectar\`.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
 
     await removeItem(user.id, objeto);
@@ -1356,7 +1357,7 @@ client.on('interactionCreate', async (interaction) => {
 
     return interaction.reply({
       content: `✅ **${info.emoji} ${info.nombre}** activado. El efecto se aplicará en tu próxima \`/recolectar\`.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -1403,10 +1404,10 @@ client.on('interactionCreate', async (interaction) => {
     const targetUser = interaction.options.getUser('usuario');
 
     if (targetUser.id === user.id) {
-      return interaction.reply({ content: '❌ No puedes tirarte caca a ti mismo.', ephemeral: true });
+      return interaction.reply({ content: '❌ No puedes tirarte caca a ti mismo.', flags: MessageFlags.Ephemeral });
     }
     if (targetUser.bot) {
-      return interaction.reply({ content: '❌ Los bots tienen inmunidad a la caca.', ephemeral: true });
+      return interaction.reply({ content: '❌ Los bots tienen inmunidad a la caca.', flags: MessageFlags.Ephemeral });
     }
 
     await ensureUser(user.id, guildId);
@@ -1414,7 +1415,7 @@ client.on('interactionCreate', async (interaction) => {
     if (!tieneCaca) {
       return interaction.reply({
         content: '❌ No tienes ninguna **💩 Caca de Toki** en tu inventario. Cómprala en `/mercader`.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -1434,10 +1435,10 @@ client.on('interactionCreate', async (interaction) => {
   // ── /soltar_platano ────────────────────────────────────────────────────────
   else if (commandName === 'soltar_platano') {
     if (!OWNER_ID || user.id !== OWNER_ID) {
-      return interaction.reply({ content: '🔒 No tienes permiso para usar este comando.', ephemeral: true });
+      return interaction.reply({ content: '🔒 No tienes permiso para usar este comando.', flags: MessageFlags.Ephemeral });
     }
 
-    await interaction.reply({ content: '✅ Soltando plátano...', ephemeral: true });
+    await interaction.reply({ content: '✅ Soltando plátano...', flags: MessageFlags.Ephemeral });
 
     const platano = getPlatanoEvento();
     const texto = `🍌 Ha caído un plátano **${platano.nombre}** ${platano.emoji} ¡agárrenlo reaccionando!`;
@@ -1496,12 +1497,12 @@ client.on('interactionCreate', async (interaction) => {
   // ── /spawn_boss ────────────────────────────────────────────────────────────
   else if (commandName === 'spawn_boss') {
     if (!OWNER_ID || user.id !== OWNER_ID)
-      return interaction.reply({ content: '🔒 No tienes permiso para usar este comando.', ephemeral: true });
+      return interaction.reply({ content: '🔒 No tienes permiso para usar este comando.', flags: MessageFlags.Ephemeral });
 
     if (bossState.activo)
-      return interaction.reply({ content: '⚠️ Ya hay un Gran Toki activo.', ephemeral: true });
+      return interaction.reply({ content: '⚠️ Ya hay un Gran Toki activo.', flags: MessageFlags.Ephemeral });
 
-    await interaction.reply({ content: '✅ Invocando al Gran Toki...', ephemeral: true });
+    await interaction.reply({ content: '✅ Invocando al Gran Toki...', flags: MessageFlags.Ephemeral });
     await lanzarBoss();
   }
 });
