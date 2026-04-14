@@ -86,7 +86,7 @@ const ESCUDOS = Object.freeze({
 // ─────────────────────────────────────────────────────────────────────────────
 // BOSS GLOBAL — estado en memoria
 // ─────────────────────────────────────────────────────────────────────────────
-const BOSS_MAX_HP = 500;
+const BOSS_MAX_HP = 1000;
 
 const bossState = {
   activo:        false,
