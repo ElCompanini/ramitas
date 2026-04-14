@@ -651,8 +651,26 @@ async function lanzarEventoPlatano() {
       collector.on('collect', async (_reaction, ganador) => {
         try {
           await ensureUser(ganador.id, canal.guild.id);
-          const pts = await addPlatano(ganador.id, canal.guild.id, platano.columna);
-          borrarDespues(await canal.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado! *(+${pts} 🍌)*`));
+          const pts   = await addPlatano(ganador.id, canal.guild.id, platano.columna);
+          let msg     = `🐒 ¡El mono **${ganador.username}** lo ha agarrado! *(+${pts} 🍌)*`;
+
+          if (await itemActivo(ganador.id, 'pata_de_mono')) {
+            await desactivarItem(ganador.id, 'pata_de_mono');
+            if (Math.random() < 0.5) {
+              const bonus = pts * 2; // total x3
+              await run(
+                `INSERT INTO platano_points (user_id, points) VALUES (?, ?)
+                 ON CONFLICT(user_id) DO UPDATE SET points = points + excluded.points`,
+                [ganador.id, bonus]
+              );
+              msg += `\n🐒 **¡Pata de Mono activada!** ¡x3! *(+${pts * 3} 🍌 en total)*`;
+            } else {
+              await run('UPDATE platano_points SET points = MAX(0, points - ?) WHERE user_id = ?', [pts, ganador.id]);
+              msg += `\n🐒 **¡Pata de Mono falló!** Perdiste los ${pts} 🍌...`;
+            }
+          }
+
+          borrarDespues(await canal.send(msg));
           console.log(`[PLÁTANO] Reclamado por ${ganador.username} → ${platano.nombre} (+${pts} pts)`);
         } catch (err) {
           console.error('[PLÁTANO] Error al procesar ganador:', err.message);
@@ -860,30 +878,7 @@ client.on('interactionCreate', async (interaction) => {
 
       await addRamita(user.id, guildId, ramita.columna, stats);
 
-      // ── Pata de Mono: activo si fue usado con /usar ──
-      const BASE_PATA = 15;
-      let pataMsgExtra = '';
-      const tienePata = await itemActivo(user.id, 'pata_de_mono');
-      if (tienePata) {
-        await desactivarItem(user.id, 'pata_de_mono');
-        if (Math.random() < 0.5) {
-          const ganado = BASE_PATA * 3;
-          await run(
-            `INSERT INTO platano_points (user_id, points) VALUES (?, ?)
-             ON CONFLICT(user_id) DO UPDATE SET points = points + excluded.points`,
-            [user.id, ganado]
-          );
-          pataMsgExtra = `\n🐒 **¡Pata de Mono activada!** ¡+**${ganado}** 🍌!`;
-        } else {
-          await run(
-            'UPDATE platano_points SET points = MAX(0, points - ?) WHERE user_id = ?',
-            [BASE_PATA, user.id]
-          );
-          pataMsgExtra = `\n🐒 **¡Pata de Mono falló!** -**${BASE_PATA}** 🍌 perdidos...`;
-        }
-      }
-
-      const descripcion = `¡Encontraste una ramita en el bosque!${tieneOjos ? '\n🐱 **Ojos de Gato** usados *(+10% suerte)*' : ''}${pataMsgExtra}`;
+      const descripcion = `¡Encontraste una ramita en el bosque!${tieneOjos ? '\n🐱 **Ojos de Gato** usados *(+10% suerte)*' : ''}`;
 
       const embed = new EmbedBuilder()
         .setTitle(`🌿 ¡Ramita ${ramita.nombre} encontrada! ${ramita.emoji}`)
@@ -1462,7 +1457,25 @@ client.on('interactionCreate', async (interaction) => {
         try {
           await ensureUser(ganador.id, guildId);
           const pts = await addPlatano(ganador.id, guildId, platano.columna);
-          borrarDespues(await interaction.channel.send(`🐒 ¡El mono **${ganador.username}** lo ha agarrado! *(+${pts} 🍌)*`));
+          let msg   = `🐒 ¡El mono **${ganador.username}** lo ha agarrado! *(+${pts} 🍌)*`;
+
+          if (await itemActivo(ganador.id, 'pata_de_mono')) {
+            await desactivarItem(ganador.id, 'pata_de_mono');
+            if (Math.random() < 0.5) {
+              const bonus = pts * 2;
+              await run(
+                `INSERT INTO platano_points (user_id, points) VALUES (?, ?)
+                 ON CONFLICT(user_id) DO UPDATE SET points = points + excluded.points`,
+                [ganador.id, bonus]
+              );
+              msg += `\n🐒 **¡Pata de Mono activada!** ¡x3! *(+${pts * 3} 🍌 en total)*`;
+            } else {
+              await run('UPDATE platano_points SET points = MAX(0, points - ?) WHERE user_id = ?', [pts, ganador.id]);
+              msg += `\n🐒 **¡Pata de Mono falló!** Perdiste los ${pts} 🍌...`;
+            }
+          }
+
+          borrarDespues(await interaction.channel.send(msg));
           console.log(`[ADMIN] Plátano manual reclamado por ${ganador.username} → ${platano.nombre} (+${pts} pts)`);
         } catch (err) {
           console.error('[ADMIN] Error al procesar ganador:', err.message);
