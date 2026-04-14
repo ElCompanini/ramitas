@@ -380,26 +380,26 @@ function getImagenRamita(columna) {
 const slashCommands = [
   new SlashCommandBuilder()
     .setName('recolectar')
-    .setDescription('🌿 Recolecta una ramita aleatoria (cooldown: 3 min)')
+    .setDescription('🌿 Recolecta una ramita aleatoria (cooldown: 30 min)')
     .toJSON(),
   new SlashCommandBuilder()
     .setName('inventario')
-    .setDescription('📦 Muestra tu inventario completo de ramitas y plátanos')
+    .setDescription('📦 Muestra tus ramitas, plátanos, objetos y equipo de combate')
     .toJSON(),
   new SlashCommandBuilder()
     .setName('perfil')
-    .setDescription('👤 Muestra tu perfil y estadísticas de recolección')
+    .setDescription('👤 Muestra tu perfil, estadísticas y rareza más alta obtenida')
     .toJSON(),
   new SlashCommandBuilder()
     .setName('top')
-    .setDescription('🏆 Ver los tops globales de recolectores')
+    .setDescription('🏆 Rankings globales: recolecciones, fuerza de ramita y plátanos')
     .toJSON(),
   new SlashCommandBuilder()
     .setName('inspeccionar')
-    .setDescription('🔍 Inspecciona tus ramitas (solo visible para ti)')
+    .setDescription('🔍 Lista tus ramitas con stats y ID · solo visible para ti')
     .addStringOption(opt =>
       opt.setName('rareza')
-        .setDescription('Filtrar por rareza')
+        .setDescription('Filtrar por rareza (opcional)')
         .setRequired(false)
         .addChoices(
           { name: '🟤 Común',      value: 'comun'      },
@@ -435,40 +435,40 @@ const slashCommands = [
     .toJSON(),
   new SlashCommandBuilder()
     .setName('mostrar')
-    .setDescription('📢 Muestra una de tus ramitas públicamente')
+    .setDescription('📢 Muestra una de tus ramitas al canal con todos sus stats')
     .addIntegerOption(opt =>
       opt.setName('id')
-        .setDescription('ID de la ramita (obtenida con /inspeccionar)')
+        .setDescription('ID de la ramita (consúltalo con /inspeccionar)')
         .setRequired(true)
         .setMinValue(1)
     )
     .toJSON(),
   new SlashCommandBuilder()
     .setName('intercambiar')
-    .setDescription('🔄 Ofrece puntos de plátano a cambio de una ramita')
+    .setDescription('🔄 Ofrece plátanos a otro usuario a cambio de una de sus ramitas')
     .addUserOption(opt =>
-      opt.setName('usuario').setDescription('Usuario con quien intercambiar').setRequired(true)
+      opt.setName('usuario').setDescription('Usuario al que le propones el intercambio').setRequired(true)
     )
     .addIntegerOption(opt =>
-      opt.setName('platanos').setDescription('Cantidad de puntos de plátano que ofreces').setRequired(true).setMinValue(1)
+      opt.setName('platanos').setDescription('Plátanos que ofreces a cambio').setRequired(true).setMinValue(1)
     )
     .toJSON(),
   new SlashCommandBuilder()
     .setName('equipar_arma')
-    .setDescription('⚔️ Equipa una ramita de tu colección como arma para atacar al jefe')
+    .setDescription('⚔️ Porta una ramita como arma · su fuerza determina el daño al jefe')
     .addIntegerOption(opt =>
       opt.setName('id')
-        .setDescription('ID de la ramita (obtenida con /inspeccionar)')
+        .setDescription('ID de la ramita (consúltalo con /inspeccionar)')
         .setRequired(true)
         .setMinValue(1)
     )
     .toJSON(),
   new SlashCommandBuilder()
     .setName('equipar_escudo')
-    .setDescription('🛡️ Equipa un escudo de tu inventario para protegerte del jefe')
+    .setDescription('🛡️ Equipa un escudo para reducir el daño del Gran Toki · drops del jefe')
     .addStringOption(opt =>
       opt.setName('tipo')
-        .setDescription('Tipo de escudo a equipar')
+        .setDescription('Escudo a equipar (debe estar en tu inventario)')
         .setRequired(true)
         .addChoices(
           { name: '📦 Escudo de Cartón',              value: 'escudo_carton'  },
@@ -479,14 +479,14 @@ const slashCommands = [
     .toJSON(),
   new SlashCommandBuilder()
     .setName('atacar')
-    .setDescription('⚔️ Ataca al Gran Toki (cooldown: 5 seg)')
+    .setDescription('⚔️ Ataca al Gran Toki · cooldown 5 seg · equipa arma y escudo para más ventaja')
     .toJSON(),
   new SlashCommandBuilder()
     .setName('usar')
-    .setDescription('🎒 Activa un objeto de tu inventario para la próxima recolección')
+    .setDescription('🎒 Usa un objeto del inventario · pociones curan al instante · otros se activan en /recolectar')
     .addStringOption(opt =>
       opt.setName('objeto')
-        .setDescription('Objeto que quieres usar')
+        .setDescription('Objeto a usar')
         .setRequired(true)
         .addChoices(
           { name: '🐒 Pata de Mono',   value: 'pata_de_mono' },
@@ -497,14 +497,14 @@ const slashCommands = [
     .toJSON(),
   new SlashCommandBuilder()
     .setName('mercader')
-    .setDescription('🛒 Visita la tienda del mercader y compra objetos especiales')
+    .setDescription('🛒 Tienda del mercader · Pata de Mono, Ojos de Gato, Caca de Toki, Poción de Vida')
     .toJSON(),
   new SlashCommandBuilder()
     .setName('tirar_caca')
-    .setDescription('💩 Lanza una Caca de Toki a otro usuario (necesitas una en tu inventario)')
+    .setDescription('💩 Lanza una Caca de Toki a un usuario · necesitas una en el inventario')
     .addUserOption(opt =>
       opt.setName('usuario')
-        .setDescription('Usuario al que le lanzas la caca')
+        .setDescription('Víctima del lanzamiento')
         .setRequired(true)
     )
     .toJSON(),
