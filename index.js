@@ -52,7 +52,7 @@ const TIENDA_ITEMS = Object.freeze({
     nombre:      'Pata de Mono',
     emoji:       '🐒',
     precio:      25,
-    descripcion: 'x3 plátanos al agarrar el siguiente plátano\n*(25% de probabilidad · actívalo con `/usar`)*',
+    descripcion: 'x3 plátanos al agarrar el siguiente plátano\n*(75% de ganar · 25% de perder · actívalo con `/usar`)*',
   },
   ojos_de_gato: {
     nombre:      'Ojos de Gato',
@@ -712,7 +712,7 @@ async function lanzarEventoPlatano() {
 
           if (await itemActivo(ganador.id, 'pata_de_mono')) {
             await desactivarItem(ganador.id, 'pata_de_mono');
-            if (Math.random() < 0.25) {
+            if (Math.random() < 0.75) {
               const bonus = pts * 2;
               await run(
                 `INSERT INTO platano_points (user_id, points) VALUES (?, ?)
@@ -1537,7 +1537,7 @@ client.on('interactionCreate', async (interaction) => {
 
           if (await itemActivo(ganador.id, 'pata_de_mono')) {
             await desactivarItem(ganador.id, 'pata_de_mono');
-            if (Math.random() < 0.25) {
+            if (Math.random() < 0.75) {
               const bonus = pts * 2;
               await run(
                 `INSERT INTO platano_points (user_id, points) VALUES (?, ?)
