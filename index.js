@@ -1428,7 +1428,7 @@ client.on('interactionCreate', async (interaction) => {
     await activarItem(user.id, objeto);
 
     return interaction.reply({
-      content: `✅ **${info.emoji} ${info.nombre}** activado. El efecto se aplicará en tu próxima \`/recolectar\`.`,
+      content: `✅ **${info.emoji} ${info.nombre}** activado. El efecto se aplicará la proxima vez que agarres un \`platano\`.`,
       flags: MessageFlags.Ephemeral,
     });
   }
