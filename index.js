@@ -1428,7 +1428,7 @@ client.on('interactionCreate', async (interaction) => {
     await activarItem(user.id, objeto);
 
     return interaction.reply({
-      content: `✅ **${info.emoji} ${info.nombre}** activado. El efecto se aplicará la proxima vez que agarres un \`platano\`.`,
+      content: `✅ **${info.emoji} ${info.nombre}** activado. El efecto se aplicará la proxima vez que agarres una \`ramita\`.`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -1560,7 +1560,7 @@ client.on('interactionCreate', async (interaction) => {
 
       collector.on('end', (collected) => {
         if (collected.size === 0) {
-          interaction.channel.send('😔 Qué pena, nadie ha agarrado el plátano.').then(borrarDespues).catch(() => {});
+          interaction.channel.send('😔 Qué pena, ningún mono ha agarrado el plátano.').then(borrarDespues).catch(() => {});
         }
       });
 
