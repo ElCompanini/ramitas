@@ -1498,7 +1498,7 @@ client.on('interactionCreate', async (interaction) => {
       `💩 <@${targetUser.id}> ha recibido un charchazo de caca en la cara de parte de **${user.username}**`,
       `💩 **${user.username}** sacó la **Caca de Toki** y se la tiró a <@${targetUser.id}>. No había escapatoria, una pena.`,
       `💩 *La caca vuela por el aire pé huevon...* ¡<@${targetUser.id}> no pudo esquivarla! Pastel cortesía de **${user.username}**.`,
-      `💩 **${user.username}** no pensó niuna wea antes de tirarle su **Caca de Toki** a <@${targetUser.id}>. Devastador, es brigido esa wea.`,
+      `💩 **${user.username}** no la pensó antes de tirarle **Caca de Toki** a <@${targetUser.id}>. Devastador, es brigida esa wea.`,
     ];
     const msg = MENSAJES_CACA[Math.floor(Math.random() * MENSAJES_CACA.length)];
     borrarDespues(await interaction.reply({ content: msg }));
