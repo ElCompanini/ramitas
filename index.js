@@ -51,8 +51,8 @@ const TIENDA_ITEMS = Object.freeze({
   pata_de_mono: {
     nombre:      'Pata de Mono',
     emoji:       '🐒',
-    precio:      50,
-    descripcion: 'x3 plátanos en tu próxima recolección\n*(50% de probabilidad de perder plátanos · actívalo con `/usar`)*',
+    precio:      25,
+    descripcion: 'x3 plátanos al agarrar el siguiente plátano\n*(25% de probabilidad · actívalo con `/usar`)*',
   },
   ojos_de_gato: {
     nombre:      'Ojos de Gato',
@@ -638,7 +638,6 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMessageReactions,
-    GatewayIntentBits.MessageContent,
   ],
   partials: [Partials.Message, Partials.Reaction, Partials.User],
 });
@@ -713,7 +712,7 @@ async function lanzarEventoPlatano() {
 
           if (await itemActivo(ganador.id, 'pata_de_mono')) {
             await desactivarItem(ganador.id, 'pata_de_mono');
-            if (Math.random() < 0.5) {
+            if (Math.random() < 0.25) {
               const bonus = pts * 2;
               await run(
                 `INSERT INTO platano_points (user_id, points) VALUES (?, ?)
@@ -1538,7 +1537,7 @@ client.on('interactionCreate', async (interaction) => {
 
           if (await itemActivo(ganador.id, 'pata_de_mono')) {
             await desactivarItem(ganador.id, 'pata_de_mono');
-            if (Math.random() < 0.5) {
+            if (Math.random() < 0.25) {
               const bonus = pts * 2;
               await run(
                 `INSERT INTO platano_points (user_id, points) VALUES (?, ?)
@@ -1607,16 +1606,6 @@ client.on('interactionCreate', async (interaction) => {
 
     await interaction.reply({ content: '✅ Invocando al Gran Toki...', flags: MessageFlags.Ephemeral });
     await lanzarBoss();
-  }
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MENSAJES
-// ─────────────────────────────────────────────────────────────────────────────
-client.on('messageCreate', (message) => {
-  if (message.author.bot) return;
-  if (/lucas\s*mill[aá]n/i.test(message.content)) {
-    message.reply('Un genio');
   }
 });
 
