@@ -464,10 +464,6 @@ const slashCommands = [
     .setDescription('⚔️ Ataca al Gran Toki (cooldown: 5 seg)')
     .toJSON(),
   new SlashCommandBuilder()
-    .setName('estado_jefe')
-    .setDescription('👁️ Consulta el HP actual del Gran Toki')
-    .toJSON(),
-  new SlashCommandBuilder()
     .setName('usar')
     .setDescription('🎒 Activa un objeto de tu inventario para la próxima recolección')
     .addStringOption(opt =>
@@ -1339,21 +1335,6 @@ client.on('interactionCreate', async (interaction) => {
 
     await actualizarBossMsg();
     if (!bossVivo) await matarBoss();
-  }
-
-  // ── /estado_jefe ──────────────────────────────────────────────────────────
-  else if (commandName === 'estado_jefe') {
-    if (!bossState.activo)
-      return interaction.reply({ content: '😴 No hay ningún jefe activo. Aparece cada 2 horas.', ephemeral: true });
-
-    const embed = new EmbedBuilder()
-      .setTitle('🦍 Estado del Gran Toki')
-      .setDescription(hpBar(bossState.hp, bossState.maxHp))
-      .addFields({ name: '👥 Participantes', value: `**${bossState.participantes.size}** mono(s) en batalla`, inline: true })
-      .setColor(0xFF0000)
-      .setTimestamp();
-
-    return interaction.reply({ embeds: [embed], ephemeral: true });
   }
 
   // ── /usar ──────────────────────────────────────────────────────────────────
