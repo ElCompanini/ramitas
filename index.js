@@ -218,10 +218,10 @@ async function addRamita(userId, guildId, columna, stats) {
 
 // Valor en puntos por tipo de plátano (rangos no solapados)
 const PLATANO_VALORES = Object.freeze({
-  elementales: { min:   5, max:  15 },
-  avanzados:   { min:  20, max:  45 },
-  galacticos:  { min:  55, max:  95 },
-  esencia:     { min: 110, max: 175 },
+  elementales: { min:   15, max:  25 },
+  avanzados:   { min:  25, max:  50 },
+  galacticos:  { min:  50, max:  100 },
+  esencia:     { min: 200, max: 300 },
 });
 
 async function addPlatano(userId, guildId, columna) {
@@ -1428,7 +1428,7 @@ client.on('interactionCreate', async (interaction) => {
     await activarItem(user.id, objeto);
 
     return interaction.reply({
-      content: `✅ **${info.emoji} ${info.nombre}** activado. El efecto se aplicará la proxima vez que agarres una \`ramita\`.`,
+      content: `✅ **${info.emoji} ${info.nombre}** activado. El efecto se aplicará la proxima vez que agarres un \`platano\`.`,
       flags: MessageFlags.Ephemeral,
     });
   }
