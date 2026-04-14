@@ -594,6 +594,40 @@ async function lanzarBoss() {
       console.error('[BOSS] Error al anunciar spawn:', err.message);
     }
   }
+
+  // Tras 10 minutos: despawnea si sigue vivo y borra los mensajes del boss
+  const mensajesDelBoss = bossState.mensajes;
+  setTimeout(async () => {
+    // Si sigue activo, despawnear
+    if (bossState.activo) {
+      bossState.activo = false;
+      bossState.participantes.clear();
+
+      const embedEscape = new EmbedBuilder()
+        .setTitle('🦍 El Gran Toki ha escapado...')
+        .setDescription('Nadie se atrevió a enfrentarlo. Ha huido de vuelta al bosque.')
+        .setColor(0x808080)
+        .setTimestamp();
+
+      for (const msg of mensajesDelBoss) {
+        try { await msg.edit({ embeds: [embedEscape] }); } catch { }
+      }
+      for (const channelId of EVENT_CHANNEL_IDS) {
+        try {
+          const canal = await client.channels.fetch(channelId).catch(() => null);
+          if (canal?.isTextBased()) await canal.send('😔 El **Gran Toki** se ha ido... nadie lo derrotó.');
+        } catch { }
+      }
+      console.log('[BOSS] Despawneado por tiempo.');
+    }
+
+    // Borrar el mensaje del boss del canal después de 10 segundos extra
+    setTimeout(async () => {
+      for (const msg of mensajesDelBoss) {
+        try { await msg.delete(); } catch { }
+      }
+    }, 10_000);
+  }, 10 * 60 * 1000);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
