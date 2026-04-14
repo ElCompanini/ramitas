@@ -638,6 +638,7 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.MessageContent,
   ],
   partials: [Partials.Message, Partials.Reaction, Partials.User],
 });
@@ -1606,6 +1607,16 @@ client.on('interactionCreate', async (interaction) => {
 
     await interaction.reply({ content: '✅ Invocando al Gran Toki...', flags: MessageFlags.Ephemeral });
     await lanzarBoss();
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MENSAJES
+// ─────────────────────────────────────────────────────────────────────────────
+client.on('messageCreate', (message) => {
+  if (message.author.bot) return;
+  if (/lucas\s*mill[aá]n/i.test(message.content)) {
+    message.reply('Un genio');
   }
 });
 
