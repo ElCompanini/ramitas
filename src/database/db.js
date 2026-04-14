@@ -83,6 +83,15 @@ async function initDatabase() {
       cantidad INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (user_id, item)
     )`,
+    `CREATE TABLE IF NOT EXISTS equipamiento (
+      user_id TEXT    PRIMARY KEY,
+      arma_id INTEGER DEFAULT NULL,
+      escudo  TEXT    DEFAULT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS combate_stats (
+      user_id TEXT    PRIMARY KEY,
+      hp      INTEGER NOT NULL DEFAULT 100
+    )`,
   ], 'write');
 
   console.log('[DB] Base de datos lista (Turso).');
@@ -115,4 +124,48 @@ async function getItemsUsuario(userId) {
   return all('SELECT item, cantidad FROM inventario_items WHERE user_id = ? AND cantidad > 0', [userId]);
 }
 
-module.exports = { initDatabase, run, get, all, getItemCantidad, addItem, removeItem, getItemsUsuario };
+async function getEquipamiento(userId) {
+  const row = await get('SELECT arma_id, escudo FROM equipamiento WHERE user_id = ?', [userId]);
+  return row ?? { arma_id: null, escudo: null };
+}
+
+async function setArma(userId, armaId) {
+  await run(
+    `INSERT INTO equipamiento (user_id, arma_id) VALUES (?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET arma_id = excluded.arma_id`,
+    [userId, armaId]
+  );
+}
+
+async function setEscudo(userId, escudo) {
+  await run(
+    `INSERT INTO equipamiento (user_id, escudo) VALUES (?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET escudo = excluded.escudo`,
+    [userId, escudo]
+  );
+}
+
+async function getPlayerHp(userId) {
+  const row = await get('SELECT hp FROM combate_stats WHERE user_id = ?', [userId]);
+  return row?.hp ?? 100;
+}
+
+async function setPlayerHp(userId, hp) {
+  const clamped = Math.max(0, Math.min(100, hp));
+  await run(
+    `INSERT INTO combate_stats (user_id, hp) VALUES (?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET hp = excluded.hp`,
+    [userId, clamped]
+  );
+}
+
+async function resetAllHp() {
+  await run('UPDATE combate_stats SET hp = 100');
+}
+
+module.exports = {
+  initDatabase, run, get, all,
+  getItemCantidad, addItem, removeItem, getItemsUsuario,
+  getEquipamiento, setArma, setEscudo,
+  getPlayerHp, setPlayerHp, resetAllHp,
+};

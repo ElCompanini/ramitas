@@ -20,7 +20,12 @@ const {
 const path = require('path');
 const fs   = require('fs');
 
-const { initDatabase, run, get, all, getItemCantidad, addItem, removeItem, getItemsUsuario } = require('./src/database/db');
+const {
+  initDatabase, run, get, all,
+  getItemCantidad, addItem, removeItem, getItemsUsuario,
+  getEquipamiento, setArma, setEscudo,
+  getPlayerHp, setPlayerHp, resetAllHp,
+} = require('./src/database/db');
 const {
   RAMITAS,
   ESTILOS,
@@ -60,6 +65,59 @@ const TIENDA_ITEMS = Object.freeze({
     descripcion: 'Lanza caca a un usuario con `/tirar_caca @usuario`\n*(Se consume al usar)*',
   },
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ESCUDOS (drops del boss)
+// ─────────────────────────────────────────────────────────────────────────────
+const ESCUDOS = Object.freeze({
+  escudo_carton:  { nombre: 'Escudo de Cartón',              emoji: '📦', redMin: 2,  redMax: 5  },
+  escudo_cascara: { nombre: 'Escudo de Cáscara de Plátano',  emoji: '🍌', redMin: 5,  redMax: 10 },
+  escudo_corteza: { nombre: 'Escudo de Corteza',             emoji: '🌳', redMin: 10, redMax: 18 },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BOSS GLOBAL — estado en memoria
+// ─────────────────────────────────────────────────────────────────────────────
+const BOSS_MAX_HP = 8000;
+
+const bossState = {
+  activo:        false,
+  hp:            0,
+  maxHp:         BOSS_MAX_HP,
+  participantes: new Map(), // userId → danoTotal
+  mensajes:      [],        // referencias a los mensajes del boss para editar
+};
+
+function hpBar(current, max, len = 18) {
+  const filled = Math.max(0, Math.round((current / max) * len));
+  return `\`${'█'.repeat(filled)}${'░'.repeat(len - filled)}\` **${current}/${max} HP**`;
+}
+
+function ri(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function buildBossEmbed() {
+  const pct = Math.round((bossState.hp / bossState.maxHp) * 100);
+  const color = pct > 50 ? 0xFF4444 : pct > 25 ? 0xFF8C00 : 0x8B0000;
+  return new EmbedBuilder()
+    .setTitle('🦍 Gran Toki')
+    .setDescription(
+      `${hpBar(bossState.hp, bossState.maxHp)}\n\n` +
+      `> Usa \`/atacar\` para hacerle daño (cooldown: 5 seg)\n` +
+      `> Los tesoros serán compartidos entre todos los participantes`
+    )
+    .addFields({ name: '👥 Participantes', value: `**${bossState.participantes.size}** mono(s) en batalla`, inline: true })
+    .setColor(color)
+    .setTimestamp();
+}
+
+async function actualizarBossMsg() {
+  const embed = buildBossEmbed();
+  for (const msg of bossState.mensajes) {
+    try { await msg.edit({ embeds: [embed] }); } catch { /* mensaje borrado o sin permisos */ }
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VARIABLES DE ENTORNO
@@ -372,6 +430,38 @@ const slashCommands = [
     )
     .toJSON(),
   new SlashCommandBuilder()
+    .setName('equipar_arma')
+    .setDescription('⚔️ Equipa una ramita de tu colección como arma para atacar al jefe')
+    .addIntegerOption(opt =>
+      opt.setName('id')
+        .setDescription('ID de la ramita (obtenida con /inspeccionar)')
+        .setRequired(true)
+        .setMinValue(1)
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('equipar_escudo')
+    .setDescription('🛡️ Equipa un escudo de tu inventario para protegerte del jefe')
+    .addStringOption(opt =>
+      opt.setName('tipo')
+        .setDescription('Tipo de escudo a equipar')
+        .setRequired(true)
+        .addChoices(
+          { name: '📦 Escudo de Cartón',              value: 'escudo_carton'  },
+          { name: '🍌 Escudo de Cáscara de Plátano',  value: 'escudo_cascara' },
+          { name: '🌳 Escudo de Corteza',             value: 'escudo_corteza' },
+        )
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('atacar')
+    .setDescription('⚔️ Ataca al Gran Toki (cooldown: 5 seg)')
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('estado_jefe')
+    .setDescription('👁️ Consulta el HP actual del Gran Toki')
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName('mercader')
     .setDescription('🛒 Visita la tienda del mercader y compra objetos especiales')
     .toJSON(),
@@ -385,6 +475,105 @@ const slashCommands = [
     )
     .toJSON(),
 ];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BOSS — spawn y muerte
+// ─────────────────────────────────────────────────────────────────────────────
+async function matarBoss() {
+  bossState.activo = false;
+
+  const participantes = [...bossState.participantes.entries()];
+  if (participantes.length === 0) return;
+  participantes.sort((a, b) => b[1] - a[1]);
+
+  const DROPS = [
+    { key: 'escudo_carton',  peso: 50 },
+    { key: 'escudo_cascara', peso: 35 },
+    { key: 'escudo_corteza', peso: 15 },
+  ];
+  function rollEscudo() {
+    const roll = Math.random() * 100;
+    let acc = 0;
+    for (const d of DROPS) { acc += d.peso; if (roll < acc) return d.key; }
+    return 'escudo_carton';
+  }
+
+  const recompensas = [];
+  for (const [userId, dano] of participantes) {
+    const escudoKey = rollEscudo();
+    const bonusPts  = Math.floor(50 + (dano / bossState.maxHp) * 300);
+    await addItem(userId, escudoKey);
+    await run(
+      `INSERT INTO platano_points (user_id, points) VALUES (?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET points = points + excluded.points`,
+      [userId, bonusPts]
+    );
+    recompensas.push({ userId, escudoKey, bonusPts, dano });
+  }
+
+  const MEDALS = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
+  const top    = recompensas.slice(0, 5);
+  const lineas = top.map((r, i) => {
+    const esc = ESCUDOS[r.escudoKey];
+    return `${MEDALS[i] ?? `**${i + 1}.**`} <@${r.userId}> — ⚔️ **${r.dano}** daño · ${esc.emoji} ${esc.nombre} · +**${r.bonusPts}** 🍌`;
+  });
+
+  const embed = new EmbedBuilder()
+    .setTitle('💀 ¡El Gran Toki ha sido derrotado!')
+    .setDescription(
+      `¡Victoria! **${participantes.length}** mono${participantes.length !== 1 ? 's' : ''} participaron.\n\n` +
+      `**🏆 Top participantes:**\n${lineas.join('\n')}\n\n` +
+      `*Todos los participantes recibieron un escudo y plátanos. Equípalos con \`/equipar_escudo\`.*`
+    )
+    .setColor(0xFFD700)
+    .setTimestamp();
+
+  for (const channelId of EVENT_CHANNEL_IDS) {
+    try {
+      const canal = await client.channels.fetch(channelId).catch(() => null);
+      if (canal?.isTextBased()) await canal.send({ embeds: [embed] });
+    } catch (err) {
+      console.error('[BOSS] Error al anunciar muerte:', err.message);
+    }
+  }
+}
+
+async function lanzarBoss() {
+  if (bossState.activo) return;
+
+  bossState.activo = true;
+  bossState.hp     = BOSS_MAX_HP;
+  bossState.maxHp  = BOSS_MAX_HP;
+  bossState.participantes.clear();
+  bossState.mensajes = [];
+
+  await resetAllHp();
+
+  const embed = new EmbedBuilder()
+    .setTitle('🦍 ¡El Gran Toki ha aparecido!')
+    .setDescription(
+      `Un boss enorme emerge del bosque. ¡Únanse a la batalla!\n\n` +
+      `${hpBar(bossState.hp, bossState.maxHp)}\n\n` +
+      `> Usa \`/atacar\` para hacerle daño al jefe.\n` +
+      `> Recuerden que **los tesoros serán compartidos entre todos** los participantes.\n` +
+      `> Equipa tu ramita con \`/equipar_arma <id>\` para hacer más daño.`
+    )
+    .setColor(0xFF0000)
+    .setFooter({ text: '⚔️ Cooldown de ataque: 5 seg · Usa /estado_jefe para ver su HP' })
+    .setTimestamp();
+
+  for (const channelId of EVENT_CHANNEL_IDS) {
+    try {
+      const canal = await client.channels.fetch(channelId).catch(() => null);
+      if (!canal?.isTextBased()) continue;
+      const bossMsg = await canal.send({ content: '@here', embeds: [embed] });
+      bossState.mensajes.push(bossMsg);
+      console.log(`[BOSS] Spawneado en #${canal.name}`);
+    } catch (err) {
+      console.error('[BOSS] Error al anunciar spawn:', err.message);
+    }
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CLIENTE DISCORD
@@ -414,6 +603,9 @@ client.once('clientReady', async () => {
   }
 
   iniciarEventoPlatano();
+
+  // Boss global cada 2 horas
+  setInterval(lanzarBoss, 2 * 60 * 60 * 1000);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -708,13 +900,27 @@ client.on('interactionCreate', async (interaction) => {
       const ramitas  = await getRamitasGlobal(user.id);
       const platanos = await getPlatanasGlobal(user.id);
       const items    = await getItemsUsuario(user.id);
+      const equipo   = await getEquipamiento(user.id);
+      const playerHp = await getPlayerHp(user.id);
 
       const itemsValue = items.length > 0
         ? items.map(row => {
-            const info = TIENDA_ITEMS[row.item];
+            const info = TIENDA_ITEMS[row.item] ?? ESCUDOS[row.item];
             return info ? `${info.emoji} ${info.nombre}: **${row.cantidad}**` : `${row.item}: **${row.cantidad}**`;
           }).join('\n')
         : '*Sin objetos*';
+
+      let armaValue = '*Sin arma equipada*';
+      if (equipo.arma_id) {
+        const arma = await getRamitaItem(equipo.arma_id);
+        if (arma && arma.user_id === user.id) {
+          const info = RAMITA_MAP[arma.rareza] ?? { emoji: '🌿', nombre: arma.rareza };
+          armaValue  = `${info.emoji} Ramita ${info.nombre} \`#${arma.id}\` — ⚡ ${arma.fuerza_total}`;
+        }
+      }
+      const escValue = equipo.escudo && ESCUDOS[equipo.escudo]
+        ? `${ESCUDOS[equipo.escudo].emoji} ${ESCUDOS[equipo.escudo].nombre}`
+        : '*Sin escudo equipado*';
 
       const embed = new EmbedBuilder()
         .setTitle(`📦 Inventario de ${user.username}`)
@@ -748,6 +954,15 @@ client.on('interactionCreate', async (interaction) => {
             name: '🛒 Objetos',
             value: itemsValue,
             inline: true,
+          },
+          {
+            name: '⚔️ Combate',
+            value: [
+              `❤️ HP: **${playerHp}/100**`,
+              `🗡️ Arma: ${armaValue}`,
+              `🛡️ Escudo: ${escValue}`,
+            ].join('\n'),
+            inline: false,
           },
         )
         .setColor(0x5865F2)
@@ -995,6 +1210,126 @@ client.on('interactionCreate', async (interaction) => {
       console.error('[CMD] /intercambiar error:', err.message);
       borrarDespues(await interaction.editReply({ content: '❌ Error al proponer el intercambio.' }));
     }
+  }
+
+  // ── /equipar_arma ─────────────────────────────────────────────────────────
+  else if (commandName === 'equipar_arma') {
+    const id   = interaction.options.getInteger('id');
+    await ensureUser(user.id, guildId);
+    const item = await getRamitaItem(id);
+
+    if (!item)
+      return interaction.reply({ content: `❌ No existe ninguna ramita con ID \`#${id}\`.`, ephemeral: true });
+    if (item.user_id !== user.id)
+      return interaction.reply({ content: '❌ Esa ramita no te pertenece.', ephemeral: true });
+
+    await setArma(user.id, id);
+    const info = RAMITA_MAP[item.rareza] ?? { emoji: '🌿', nombre: item.rareza };
+    return interaction.reply({
+      content: `✅ Equipaste ${info.emoji} **Ramita ${info.nombre}** \`#${id}\` como arma *(⚡ ${item.fuerza_total} fuerza)*.`,
+      ephemeral: true,
+    });
+  }
+
+  // ── /equipar_escudo ───────────────────────────────────────────────────────
+  else if (commandName === 'equipar_escudo') {
+    const tipo = interaction.options.getString('tipo');
+    await ensureUser(user.id, guildId);
+    const esc  = ESCUDOS[tipo];
+
+    const cantidad = await getItemCantidad(user.id, tipo);
+    if (cantidad <= 0)
+      return interaction.reply({
+        content: `❌ No tienes ningún **${esc.emoji} ${esc.nombre}** en tu inventario. ¡Derrota al Gran Toki para conseguirlo!`,
+        ephemeral: true,
+      });
+
+    await setEscudo(user.id, tipo);
+    return interaction.reply({
+      content: `✅ Equipaste **${esc.emoji} ${esc.nombre}** *(absorbe ${esc.redMin}–${esc.redMax} de daño por golpe)*.`,
+      ephemeral: true,
+    });
+  }
+
+  // ── /atacar ───────────────────────────────────────────────────────────────
+  else if (commandName === 'atacar') {
+    if (!bossState.activo)
+      return interaction.reply({ content: '😴 No hay ningún jefe activo ahora mismo. Aparece cada 2 horas.', ephemeral: true });
+
+    const cd = checkCooldown(user.id, 'atacar', 5_000);
+    if (cd.onCooldown)
+      return interaction.reply({ content: `⏳ Espera **${cd.timeLeft}s** para volver a atacar.`, ephemeral: true });
+
+    await ensureUser(user.id, guildId);
+
+    const hp = await getPlayerHp(user.id);
+    if (hp <= 0)
+      return interaction.reply({ content: '💀 Estás muerto. No puedes atacar hasta que aparezca el próximo jefe.', ephemeral: true });
+
+    // Daño del jugador
+    const equipo = await getEquipamiento(user.id);
+    let danoJugador, armaDesc;
+
+    if (equipo.arma_id) {
+      const arma = await getRamitaItem(equipo.arma_id);
+      if (arma && arma.user_id === user.id) {
+        danoJugador = Math.floor(arma.fuerza_total * (0.4 + Math.random() * 0.4));
+        const info  = RAMITA_MAP[arma.rareza] ?? { emoji: '🌿', nombre: arma.rareza };
+        armaDesc    = `${info.emoji} Ramita ${info.nombre} (⚡${arma.fuerza_total})`;
+      }
+    }
+    if (!danoJugador) { danoJugador = ri(10, 25); armaDesc = '👊 Sin arma'; }
+
+    // Contraataque del boss
+    const danoBase   = ri(8, 22);
+    let reduccion    = 0;
+    let escudoDesc   = '🚫 Sin escudo';
+    if (equipo.escudo && ESCUDOS[equipo.escudo]) {
+      const esc  = ESCUDOS[equipo.escudo];
+      reduccion  = ri(esc.redMin, esc.redMax);
+      escudoDesc = `${esc.emoji} ${esc.nombre} (-${reduccion})`;
+    }
+    const danoRecibido = Math.max(1, danoBase - reduccion);
+
+    // Aplicar daño
+    bossState.hp = Math.max(0, bossState.hp - danoJugador);
+    bossState.participantes.set(user.id, (bossState.participantes.get(user.id) ?? 0) + danoJugador);
+
+    const newHp    = Math.max(0, hp - danoRecibido);
+    await setPlayerHp(user.id, newHp);
+
+    const bossVivo = bossState.hp > 0;
+    const embed    = new EmbedBuilder()
+      .setTitle('⚔️ ¡Atacas al Gran Toki!')
+      .addFields(
+        { name: '🗡️ Tu ataque',      value: `**-${danoJugador} HP** al jefe · ${armaDesc}`,        inline: true  },
+        { name: '💥 Contraataque',    value: `**-${danoRecibido} HP** para ti · ${escudoDesc}`,     inline: true  },
+        { name: '\u200b',             value: '\u200b',                                               inline: true  },
+        { name: '🦍 Jefe',           value: hpBar(bossState.hp, bossState.maxHp, 15),              inline: false },
+        { name: '❤️ Tu HP',          value: `**${newHp}/100**${newHp <= 0 ? ' 💀 Has muerto' : ''}`, inline: true },
+      )
+      .setColor(bossVivo ? 0xFF4444 : 0xFFD700)
+      .setTimestamp();
+
+    await interaction.reply({ embeds: [embed], ephemeral: true });
+
+    await actualizarBossMsg();
+    if (!bossVivo) await matarBoss();
+  }
+
+  // ── /estado_jefe ──────────────────────────────────────────────────────────
+  else if (commandName === 'estado_jefe') {
+    if (!bossState.activo)
+      return interaction.reply({ content: '😴 No hay ningún jefe activo. Aparece cada 2 horas.', ephemeral: true });
+
+    const embed = new EmbedBuilder()
+      .setTitle('🦍 Estado del Gran Toki')
+      .setDescription(hpBar(bossState.hp, bossState.maxHp))
+      .addFields({ name: '👥 Participantes', value: `**${bossState.participantes.size}** mono(s) en batalla`, inline: true })
+      .setColor(0xFF0000)
+      .setTimestamp();
+
+    return interaction.reply({ embeds: [embed], ephemeral: true });
   }
 
   // ── /mercader ──────────────────────────────────────────────────────────────
