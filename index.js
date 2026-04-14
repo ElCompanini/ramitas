@@ -511,6 +511,24 @@ const slashCommands = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
+// BOSS — avisos previos al spawn
+async function avisarBossProximo(minutosRestantes) {
+  const mensajes = {
+    30: `⏰ El **Gran Toki** aparecerá en **30 minutos**. ¡Prepara tu ramita con \`/equipar_arma\`!`,
+    15: `⚠️ El **Gran Toki** aparecerá en **15 minutos**. ¡Equipa tu escudo con \`/equipar_escudo\`!`,
+    10: `🔴 El **Gran Toki** aparecerá en **10 minutos**. ¡Último aviso para prepararse!`,
+     5: `🚨 El **Gran Toki** aparece en **5 minutos**. ¡A sus posiciones!`,
+  };
+  const texto = mensajes[minutosRestantes];
+  if (!texto) return;
+  for (const channelId of EVENT_CHANNEL_IDS) {
+    try {
+      const canal = await client.channels.fetch(channelId).catch(() => null);
+      if (canal?.isTextBased()) borrarDespues(await canal.send(texto));
+    } catch { }
+  }
+}
+
 // BOSS — spawn y muerte
 // ─────────────────────────────────────────────────────────────────────────────
 async function matarBoss() {
@@ -667,9 +685,24 @@ client.once('clientReady', async () => {
 
   console.log(`[BOSS] Primer spawn en ${Math.round(delayBoss / 1000)}s (alineado a múltiplos de 2 h).`);
 
+  // Avisos previos al primer spawn (solo si hay tiempo suficiente)
+  for (const min of [30, 15, 10, 5]) {
+    const avisoDelay = delayBoss - min * 60 * 1000;
+    if (avisoDelay > 0) setTimeout(() => avisarBossProximo(min), avisoDelay);
+  }
+
   setTimeout(() => {
     lanzarBoss();
     setInterval(lanzarBoss, BOSS_INTERVALO_MS);
+
+    // Avisos para spawns posteriores: offset desde cada spawn
+    for (const min of [30, 15, 10, 5]) {
+      const offsetMs = BOSS_INTERVALO_MS - min * 60 * 1000;
+      setTimeout(() => {
+        avisarBossProximo(min);
+        setInterval(() => avisarBossProximo(min), BOSS_INTERVALO_MS);
+      }, offsetMs);
+    }
   }, delayBoss);
 });
 
