@@ -554,22 +554,24 @@ async function matarBoss() {
 
   const recompensas = [];
   for (const [userId, dano] of participantes) {
-    const escudoKey = rollEscudo();
-    const bonusPts  = Math.floor(50 + (dano / bossState.maxHp) * 800);
+    const escudoKey  = rollEscudo();
+    const bonusPts   = Math.floor(50 + (dano / bossState.maxHp) * 800);
+    const pociones   = Math.floor(Math.random() * 5) + 1; // 1–5 pociones garantizadas
     await addItem(userId, escudoKey);
+    await addItem(userId, 'pocion_vida', pociones);
     await run(
       `INSERT INTO platano_points (user_id, points) VALUES (?, ?)
        ON CONFLICT(user_id) DO UPDATE SET points = points + excluded.points`,
       [userId, bonusPts]
     );
-    recompensas.push({ userId, escudoKey, bonusPts, dano });
+    recompensas.push({ userId, escudoKey, bonusPts, dano, pociones });
   }
 
   const MEDALS = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
   const top    = recompensas.slice(0, 5);
   const lineas = top.map((r, i) => {
     const esc = ESCUDOS[r.escudoKey];
-    return `${MEDALS[i] ?? `**${i + 1}.**`} <@${r.userId}> — ⚔️ **${r.dano}** daño · ${esc.emoji} ${esc.nombre} · +**${r.bonusPts}** 🍌`;
+    return `${MEDALS[i] ?? `**${i + 1}.**`} <@${r.userId}> — ⚔️ **${r.dano}** daño · ${esc.emoji} ${esc.nombre} · 🧪 x${r.pociones} · +**${r.bonusPts}** 🍌`;
   });
 
   const embed = new EmbedBuilder()
@@ -577,7 +579,7 @@ async function matarBoss() {
     .setDescription(
       `¡Victoria! **${participantes.length}** mono${participantes.length !== 1 ? 's' : ''} participaron.\n\n` +
       `**🏆 Top participantes:**\n${lineas.join('\n')}\n\n` +
-      `*Todos los participantes recibieron un escudo y plátanos. Equípalos con \`/equipar_escudo\`.*`
+      `*Todos recibieron un escudo, plátanos y pociones de vida. Úsalas con \`/usar pocion_vida\`.*`
     )
     .setColor(0xFFD700)
     .setTimestamp();
