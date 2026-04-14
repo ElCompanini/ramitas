@@ -610,11 +610,18 @@ client.once('clientReady', async () => {
 
   iniciarEventoPlatano();
 
-  // Boss global: primera aparición tras 2 horas, luego cada 2 horas
+  // Boss global alineado a 00:00, 02:00, 04:00...
+  const BOSS_INTERVALO_MS = 2 * 60 * 60 * 1000;
+  const ahoraBoss         = Date.now();
+  const siguienteBoss     = Math.ceil(ahoraBoss / BOSS_INTERVALO_MS) * BOSS_INTERVALO_MS;
+  const delayBoss         = siguienteBoss - ahoraBoss;
+
+  console.log(`[BOSS] Primer spawn en ${Math.round(delayBoss / 1000)}s (alineado a múltiplos de 2 h).`);
+
   setTimeout(() => {
     lanzarBoss();
-    setInterval(lanzarBoss, 2 * 60 * 60 * 1000);
-  }, 2 * 60 * 60 * 1000);
+    setInterval(lanzarBoss, BOSS_INTERVALO_MS);
+  }, delayBoss);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
