@@ -66,6 +66,12 @@ const TIENDA_ITEMS = Object.freeze({
     precio:      10,
     descripcion: 'Lanza caca a un usuario con `/tirar_caca @usuario`\n*(Se consume al usar)*',
   },
+  pocion_vida: {
+    nombre:      'Poción de Vida',
+    emoji:       '🧪',
+    precio:      100,
+    descripcion: 'Recupera **50 HP** al instante\n*(Úsala con `/usar`)*',
+  },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -80,7 +86,7 @@ const ESCUDOS = Object.freeze({
 // ─────────────────────────────────────────────────────────────────────────────
 // BOSS GLOBAL — estado en memoria
 // ─────────────────────────────────────────────────────────────────────────────
-const BOSS_MAX_HP = 8000;
+const BOSS_MAX_HP = 2000;
 
 const bossState = {
   activo:        false,
@@ -149,7 +155,7 @@ const PLATANO_INTERVALO_MS    = 5 * 60 * 1000;   // 5 min
 const AUTO_DELETE_MS          = 45_000;          // 45 segundos
 
 function borrarDespues(msg) {
-  setTimeout(() => msg.delete().catch(() => {}), AUTO_DELETE_MS);
+  setTimeout(() => msg.delete().catch(err => console.error('[DELETE]', err.message)), AUTO_DELETE_MS);
 }
 
 // Intercambios pendientes: messageId → datos del trade
@@ -417,6 +423,17 @@ const slashCommands = [
     .setDescription('🔒 [Admin] Invoca al Gran Toki inmediatamente')
     .toJSON(),
   new SlashCommandBuilder()
+    .setName('limpiar')
+    .setDescription('🔒 [Admin] Borra los últimos mensajes del bot en este canal')
+    .addIntegerOption(opt =>
+      opt.setName('cantidad')
+        .setDescription('Cuántos mensajes borrar (por defecto 10, máximo 50)')
+        .setMinValue(1)
+        .setMaxValue(50)
+        .setRequired(false)
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName('mostrar')
     .setDescription('📢 Muestra una de tus ramitas públicamente')
     .addIntegerOption(opt =>
@@ -472,8 +489,9 @@ const slashCommands = [
         .setDescription('Objeto que quieres usar')
         .setRequired(true)
         .addChoices(
-          { name: '🐒 Pata de Mono',  value: 'pata_de_mono' },
-          { name: '🐱 Ojos de Gato',  value: 'ojos_de_gato' },
+          { name: '🐒 Pata de Mono',   value: 'pata_de_mono' },
+          { name: '🐱 Ojos de Gato',   value: 'ojos_de_gato' },
+          { name: '🧪 Poción de Vida', value: 'pocion_vida'  },
         )
     )
     .toJSON(),
@@ -517,7 +535,7 @@ async function matarBoss() {
   const recompensas = [];
   for (const [userId, dano] of participantes) {
     const escudoKey = rollEscudo();
-    const bonusPts  = Math.floor(50 + (dano / bossState.maxHp) * 300);
+    const bonusPts  = Math.floor(50 + (dano / bossState.maxHp) * 800);
     await addItem(userId, escudoKey);
     await run(
       `INSERT INTO platano_points (user_id, points) VALUES (?, ?)
@@ -649,29 +667,32 @@ async function lanzarEventoPlatano() {
         time: 30_000,
       });
 
-      collector.on('collect', async (_reaction, ganador) => {
+      collector.on('collect', async (reaction, ganador) => {
         try {
+          if (reaction.partial) await reaction.fetch();
+          if (ganador.partial)  await ganador.fetch();
+
           await ensureUser(ganador.id, canal.guild.id);
           const pts   = await addPlatano(ganador.id, canal.guild.id, platano.columna);
-          let msg     = `🐒 ¡El mono **${ganador.username}** lo ha agarrado! *(+${pts} 🍌)*`;
+          let texto   = `🐒 ¡El mono **${ganador.username}** lo ha agarrado! *(+${pts} 🍌)*`;
 
           if (await itemActivo(ganador.id, 'pata_de_mono')) {
             await desactivarItem(ganador.id, 'pata_de_mono');
             if (Math.random() < 0.5) {
-              const bonus = pts * 2; // total x3
+              const bonus = pts * 2;
               await run(
                 `INSERT INTO platano_points (user_id, points) VALUES (?, ?)
                  ON CONFLICT(user_id) DO UPDATE SET points = points + excluded.points`,
                 [ganador.id, bonus]
               );
-              msg += `\n🐒 **¡Pata de Mono activada!** ¡x3! *(+${pts * 3} 🍌 en total)*`;
+              texto += `\n🐒 **¡Pata de Mono activada!** ¡x3! *(+${pts * 3} 🍌 en total)*`;
             } else {
               await run('UPDATE platano_points SET points = MAX(0, points - ?) WHERE user_id = ?', [pts, ganador.id]);
-              msg += `\n🐒 **¡Pata de Mono falló!** Perdiste los ${pts} 🍌...`;
+              texto += `\n🐒 **¡Pata de Mono falló!** Perdiste los ${pts} 🍌...`;
             }
           }
 
-          borrarDespues(await canal.send(msg));
+          borrarDespues(await canal.send(texto));
           console.log(`[PLÁTANO] Reclamado por ${ganador.username} → ${platano.nombre} (+${pts} pts)`);
         } catch (err) {
           console.error('[PLÁTANO] Error al procesar ganador:', err.message);
@@ -1346,6 +1367,23 @@ client.on('interactionCreate', async (interaction) => {
         flags: MessageFlags.Ephemeral,
       });
 
+    // ── Poción de Vida: efecto inmediato ──
+    if (objeto === 'pocion_vida') {
+      const hpActual = await getPlayerHp(user.id);
+      if (hpActual >= 100)
+        return interaction.reply({
+          content: `❤️ Ya tienes el HP al máximo (**100/100**). No tiene sentido usar la poción ahora.`,
+          flags: MessageFlags.Ephemeral,
+        });
+      await removeItem(user.id, objeto);
+      const hpNuevo = Math.min(100, hpActual + 50);
+      await setPlayerHp(user.id, hpNuevo);
+      return interaction.reply({
+        content: `🧪 ¡Poción usada! HP: **${hpActual} → ${hpNuevo}/100** *(+${hpNuevo - hpActual} HP)*.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
     if (await itemActivo(user.id, objeto))
       return interaction.reply({
         content: `⚠️ Ya tienes **${info.emoji} ${info.nombre}** activado. Se aplicará en tu próxima \`/recolectar\`.`,
@@ -1454,11 +1492,14 @@ client.on('interactionCreate', async (interaction) => {
         time: 30_000,
       });
 
-      collector.on('collect', async (_reaction, ganador) => {
+      collector.on('collect', async (reaction, ganador) => {
         try {
+          if (reaction.partial) await reaction.fetch();
+          if (ganador.partial)  await ganador.fetch();
+
           await ensureUser(ganador.id, guildId);
-          const pts = await addPlatano(ganador.id, guildId, platano.columna);
-          let msg   = `🐒 ¡El mono **${ganador.username}** lo ha agarrado! *(+${pts} 🍌)*`;
+          const pts   = await addPlatano(ganador.id, guildId, platano.columna);
+          let texto   = `🐒 ¡El mono **${ganador.username}** lo ha agarrado! *(+${pts} 🍌)*`;
 
           if (await itemActivo(ganador.id, 'pata_de_mono')) {
             await desactivarItem(ganador.id, 'pata_de_mono');
@@ -1469,14 +1510,14 @@ client.on('interactionCreate', async (interaction) => {
                  ON CONFLICT(user_id) DO UPDATE SET points = points + excluded.points`,
                 [ganador.id, bonus]
               );
-              msg += `\n🐒 **¡Pata de Mono activada!** ¡x3! *(+${pts * 3} 🍌 en total)*`;
+              texto += `\n🐒 **¡Pata de Mono activada!** ¡x3! *(+${pts * 3} 🍌 en total)*`;
             } else {
               await run('UPDATE platano_points SET points = MAX(0, points - ?) WHERE user_id = ?', [pts, ganador.id]);
-              msg += `\n🐒 **¡Pata de Mono falló!** Perdiste los ${pts} 🍌...`;
+              texto += `\n🐒 **¡Pata de Mono falló!** Perdiste los ${pts} 🍌...`;
             }
           }
 
-          borrarDespues(await interaction.channel.send(msg));
+          borrarDespues(await interaction.channel.send(texto));
           console.log(`[ADMIN] Plátano manual reclamado por ${ganador.username} → ${platano.nombre} (+${pts} pts)`);
         } catch (err) {
           console.error('[ADMIN] Error al procesar ganador:', err.message);
@@ -1491,6 +1532,33 @@ client.on('interactionCreate', async (interaction) => {
 
     } catch (err) {
       console.error('[ADMIN] /soltar_platano error:', err.message);
+    }
+  }
+
+  // ── /limpiar ───────────────────────────────────────────────────────────────
+  else if (commandName === 'limpiar') {
+    if (!OWNER_ID || user.id !== OWNER_ID)
+      return interaction.reply({ content: '🔒 No tienes permiso para usar este comando.', flags: MessageFlags.Ephemeral });
+
+    const cantidad = interaction.options.getInteger('cantidad') ?? 10;
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    try {
+      const mensajes = await interaction.channel.messages.fetch({ limit: 100 });
+      const delBot   = mensajes
+        .filter(m => m.author.id === client.user.id)
+        .first(cantidad);
+
+      let borrados = 0;
+      for (const m of delBot) {
+        await m.delete().catch(() => {});
+        borrados++;
+      }
+
+      await interaction.editReply({ content: `✅ ${borrados} mensaje${borrados !== 1 ? 's' : ''} del bot borrado${borrados !== 1 ? 's' : ''}.` });
+    } catch (err) {
+      console.error('[CMD] /limpiar error:', err.message);
+      await interaction.editReply({ content: '❌ Error al borrar mensajes.' });
     }
   }
 
