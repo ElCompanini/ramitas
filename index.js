@@ -25,6 +25,7 @@ const {
   getItemCantidad, addItem, removeItem, getItemsUsuario,
   getEquipamiento, setArma, setEscudo,
   getPlayerHp, setPlayerHp, resetAllHp,
+  activarItem, itemActivo, desactivarItem,
 } = require('./src/database/db');
 const {
   RAMITAS,
@@ -50,13 +51,13 @@ const TIENDA_ITEMS = Object.freeze({
     nombre:      'Pata de Mono',
     emoji:       '🐒',
     precio:      50,
-    descripcion: 'x3 plátanos en tu próxima recolección\n*(50% de probabilidad de perder plátanos en vez de ganar)*',
+    descripcion: 'x3 plátanos en tu próxima recolección\n*(50% de probabilidad de perder plátanos · actívalo con `/usar`)*',
   },
   ojos_de_gato: {
     nombre:      'Ojos de Gato',
     emoji:       '🐱',
     precio:      100,
-    descripcion: '+10% más de suerte para encontrar ramitas de mejor calidad\n*(Se consume en la próxima recolección)*',
+    descripcion: '+10% más de suerte para encontrar ramitas de mejor calidad\n*(Actívalo con `/usar` antes de recolectar)*',
   },
   caca_de_toki: {
     nombre:      'Caca de Toki',
@@ -98,14 +99,15 @@ function ri(min, max) {
 }
 
 function buildBossEmbed() {
-  const pct = Math.round((bossState.hp / bossState.maxHp) * 100);
+  const pct   = Math.round((bossState.hp / bossState.maxHp) * 100);
   const color = pct > 50 ? 0xFF4444 : pct > 25 ? 0xFF8C00 : 0x8B0000;
   return new EmbedBuilder()
-    .setTitle('🦍 Gran Toki')
+    .setTitle('🦍 ¡El Gran Toki ha aparecido!')
     .setDescription(
       `${hpBar(bossState.hp, bossState.maxHp)}\n\n` +
-      `> Usa \`/atacar\` para hacerle daño (cooldown: 5 seg)\n` +
-      `> Los tesoros serán compartidos entre todos los participantes`
+      `> Usa \`/atacar\` para hacerle daño *(cooldown: 5 seg)*\n` +
+      `> Equipa tu ramita con \`/equipar_arma <id>\` para más daño\n` +
+      `> Los tesoros serán compartidos entre **todos** los participantes`
     )
     .addFields({ name: '👥 Participantes', value: `**${bossState.participantes.size}** mono(s) en batalla`, inline: true })
     .setColor(color)
@@ -410,6 +412,10 @@ const slashCommands = [
     .setDescription('🔒 [Admin] Lanza un evento de plátano inmediatamente')
     .toJSON(),
   new SlashCommandBuilder()
+    .setName('spawn_boss')
+    .setDescription('🔒 [Admin] Invoca al Gran Toki inmediatamente')
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName('mostrar')
     .setDescription('📢 Muestra una de tus ramitas públicamente')
     .addIntegerOption(opt =>
@@ -460,6 +466,19 @@ const slashCommands = [
   new SlashCommandBuilder()
     .setName('estado_jefe')
     .setDescription('👁️ Consulta el HP actual del Gran Toki')
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('usar')
+    .setDescription('🎒 Activa un objeto de tu inventario para la próxima recolección')
+    .addStringOption(opt =>
+      opt.setName('objeto')
+        .setDescription('Objeto que quieres usar')
+        .setRequired(true)
+        .addChoices(
+          { name: '🐒 Pata de Mono',  value: 'pata_de_mono' },
+          { name: '🐱 Ojos de Gato',  value: 'ojos_de_gato' },
+        )
+    )
     .toJSON(),
   new SlashCommandBuilder()
     .setName('mercader')
@@ -549,24 +568,11 @@ async function lanzarBoss() {
 
   await resetAllHp();
 
-  const embed = new EmbedBuilder()
-    .setTitle('🦍 ¡El Gran Toki ha aparecido!')
-    .setDescription(
-      `Un boss enorme emerge del bosque. ¡Únanse a la batalla!\n\n` +
-      `${hpBar(bossState.hp, bossState.maxHp)}\n\n` +
-      `> Usa \`/atacar\` para hacerle daño al jefe.\n` +
-      `> Recuerden que **los tesoros serán compartidos entre todos** los participantes.\n` +
-      `> Equipa tu ramita con \`/equipar_arma <id>\` para hacer más daño.`
-    )
-    .setColor(0xFF0000)
-    .setFooter({ text: '⚔️ Cooldown de ataque: 5 seg · Usa /estado_jefe para ver su HP' })
-    .setTimestamp();
-
   for (const channelId of EVENT_CHANNEL_IDS) {
     try {
       const canal = await client.channels.fetch(channelId).catch(() => null);
       if (!canal?.isTextBased()) continue;
-      const bossMsg = await canal.send({ content: '@here', embeds: [embed] });
+      const bossMsg = await canal.send({ content: '@here', embeds: [buildBossEmbed()] });
       bossState.mensajes.push(bossMsg);
       console.log(`[BOSS] Spawneado en #${canal.name}`);
     } catch (err) {
@@ -604,8 +610,11 @@ client.once('clientReady', async () => {
 
   iniciarEventoPlatano();
 
-  // Boss global cada 2 horas
-  setInterval(lanzarBoss, 2 * 60 * 60 * 1000);
+  // Boss global: primera aparición tras 2 horas, luego cada 2 horas
+  setTimeout(() => {
+    lanzarBoss();
+    setInterval(lanzarBoss, 2 * 60 * 60 * 1000);
+  }, 2 * 60 * 60 * 1000);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -831,21 +840,21 @@ client.on('interactionCreate', async (interaction) => {
     try {
       await ensureUser(user.id, guildId);
 
-      // ── Ojos de Gato: +10% suerte, se consume al usar ──
-      const tieneOjos = (await getItemCantidad(user.id, 'ojos_de_gato')) > 0;
-      if (tieneOjos) await removeItem(user.id, 'ojos_de_gato');
+      // ── Ojos de Gato: +10% suerte, activo si fue usado con /usar ──
+      const tieneOjos = await itemActivo(user.id, 'ojos_de_gato');
+      if (tieneOjos) await desactivarItem(user.id, 'ojos_de_gato');
       const ramita = tieneOjos ? getRamitaAleatoriaConSuerte() : getRamitaAleatoria();
       const stats     = generarStats(ramita.columna);
       const imagen    = getImagenRamita(ramita.columna);
 
       await addRamita(user.id, guildId, ramita.columna, stats);
 
-      // ── Pata de Mono: activar y consumir ──
+      // ── Pata de Mono: activo si fue usado con /usar ──
       const BASE_PATA = 15;
       let pataMsgExtra = '';
-      const tienePata = (await getItemCantidad(user.id, 'pata_de_mono')) > 0;
+      const tienePata = await itemActivo(user.id, 'pata_de_mono');
       if (tienePata) {
-        await removeItem(user.id, 'pata_de_mono');
+        await desactivarItem(user.id, 'pata_de_mono');
         if (Math.random() < 0.5) {
           const ganado = BASE_PATA * 3;
           await run(
@@ -1332,6 +1341,34 @@ client.on('interactionCreate', async (interaction) => {
     return interaction.reply({ embeds: [embed], ephemeral: true });
   }
 
+  // ── /usar ──────────────────────────────────────────────────────────────────
+  else if (commandName === 'usar') {
+    const objeto = interaction.options.getString('objeto');
+    const info   = TIENDA_ITEMS[objeto];
+    await ensureUser(user.id, guildId);
+
+    const cantidad = await getItemCantidad(user.id, objeto);
+    if (cantidad <= 0)
+      return interaction.reply({
+        content: `❌ No tienes ningún **${info.emoji} ${info.nombre}** en tu inventario. Cómpralo en \`/mercader\`.`,
+        ephemeral: true,
+      });
+
+    if (await itemActivo(user.id, objeto))
+      return interaction.reply({
+        content: `⚠️ Ya tienes **${info.emoji} ${info.nombre}** activado. Se aplicará en tu próxima \`/recolectar\`.`,
+        ephemeral: true,
+      });
+
+    await removeItem(user.id, objeto);
+    await activarItem(user.id, objeto);
+
+    return interaction.reply({
+      content: `✅ **${info.emoji} ${info.nombre}** activado. El efecto se aplicará en tu próxima \`/recolectar\`.`,
+      ephemeral: true,
+    });
+  }
+
   // ── /mercader ──────────────────────────────────────────────────────────────
   else if (commandName === 'mercader') {
     await interaction.deferReply();
@@ -1445,6 +1482,18 @@ client.on('interactionCreate', async (interaction) => {
     } catch (err) {
       console.error('[ADMIN] /soltar_platano error:', err.message);
     }
+  }
+
+  // ── /spawn_boss ────────────────────────────────────────────────────────────
+  else if (commandName === 'spawn_boss') {
+    if (!OWNER_ID || user.id !== OWNER_ID)
+      return interaction.reply({ content: '🔒 No tienes permiso para usar este comando.', ephemeral: true });
+
+    if (bossState.activo)
+      return interaction.reply({ content: '⚠️ Ya hay un Gran Toki activo.', ephemeral: true });
+
+    await interaction.reply({ content: '✅ Invocando al Gran Toki...', ephemeral: true });
+    await lanzarBoss();
   }
 });
 

@@ -92,6 +92,11 @@ async function initDatabase() {
       user_id TEXT    PRIMARY KEY,
       hp      INTEGER NOT NULL DEFAULT 100
     )`,
+    `CREATE TABLE IF NOT EXISTS items_activos (
+      user_id TEXT NOT NULL,
+      item    TEXT NOT NULL,
+      PRIMARY KEY (user_id, item)
+    )`,
   ], 'write');
 
   console.log('[DB] Base de datos lista (Turso).');
@@ -163,9 +168,26 @@ async function resetAllHp() {
   await run('UPDATE combate_stats SET hp = 100');
 }
 
+async function activarItem(userId, item) {
+  await run(
+    'INSERT OR REPLACE INTO items_activos (user_id, item) VALUES (?, ?)',
+    [userId, item]
+  );
+}
+
+async function itemActivo(userId, item) {
+  const row = await get('SELECT 1 FROM items_activos WHERE user_id = ? AND item = ?', [userId, item]);
+  return !!row;
+}
+
+async function desactivarItem(userId, item) {
+  await run('DELETE FROM items_activos WHERE user_id = ? AND item = ?', [userId, item]);
+}
+
 module.exports = {
   initDatabase, run, get, all,
   getItemCantidad, addItem, removeItem, getItemsUsuario,
   getEquipamiento, setArma, setEscudo,
   getPlayerHp, setPlayerHp, resetAllHp,
+  activarItem, itemActivo, desactivarItem,
 };
