@@ -1407,37 +1407,31 @@ client.on('interactionCreate', async (interaction) => {
     await setPlayerHp(user.id, newHp);
 
     const bossVivo = bossState.hp > 0;
+    const pct      = Math.round((bossState.hp / bossState.maxHp) * 100);
+    const color    = bossVivo ? (pct > 50 ? 0xFF4444 : pct > 25 ? 0xFF8C00 : 0x8B0000) : 0xFFD700;
     const embed    = new EmbedBuilder()
       .setTitle('⚔️ ¡Atacas al Gran Toki!')
       .addFields(
-        { name: '🗡️ Tu ataque',      value: `**-${danoJugador} HP** al jefe · ${armaDesc}`,        inline: true  },
-        { name: '💥 Contraataque',    value: `**-${danoRecibido} HP** para ti · ${escudoDesc}`,     inline: true  },
-        { name: '\u200b',             value: '\u200b',                                               inline: true  },
-        { name: '🦍 Jefe',           value: hpBar(bossState.hp, bossState.maxHp, 15),              inline: false },
-        { name: '❤️ Tu HP',          value: `**${newHp}/100**${newHp <= 0 ? ' 💀 Has muerto' : ''}`, inline: true },
+        { name: '🗡️ Ataque de ' + user.username, value: `**-${danoJugador} HP** al jefe · ${armaDesc}`,          inline: true  },
+        { name: '💥 Contraataque',                value: `**-${danoRecibido} HP** para ${user.username} · ${escudoDesc}`, inline: true  },
+        { name: '\u200b',                          value: '\u200b',                                                  inline: true  },
+        { name: '🦍 Gran Toki',                   value: hpBar(bossState.hp, bossState.maxHp, 15),                 inline: false },
+        { name: `❤️ HP de ${user.username}`,      value: `**${newHp}/100**${newHp <= 0 ? ' 💀 Ha muerto' : ''}`,  inline: true  },
+        { name: '👥 Participantes',               value: `**${bossState.participantes.size}** mono(s) en batalla`, inline: true  },
       )
-      .setColor(bossVivo ? 0xFF4444 : 0xFFD700)
+      .setColor(color)
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+    // Respuesta efímera vacía para cerrar la interacción sin mandar nada visible
+    await interaction.reply({ content: '⚔️', flags: MessageFlags.Ephemeral });
+    await interaction.deleteReply().catch(() => {});
 
-    // Borrar mensaje de vida anterior y publicar uno nuevo en el canal
+    // Borrar mensaje anterior y publicar el nuevo en el canal
     if (bossState.msgVida) {
       try { await bossState.msgVida.delete(); } catch {}
       bossState.msgVida = null;
     }
-    if (bossVivo) {
-      const pct      = Math.round((bossState.hp / bossState.maxHp) * 100);
-      const color    = pct > 50 ? 0xFF4444 : pct > 25 ? 0xFF8C00 : 0x8B0000;
-      const vidaEmbed = new EmbedBuilder()
-        .setTitle('🦍 Gran Toki — Vida restante')
-        .setDescription(hpBar(bossState.hp, bossState.maxHp, 20))
-        .addFields({ name: '👥 Participantes', value: `**${bossState.participantes.size}** mono(s) en batalla`, inline: true })
-        .setColor(color)
-        .setFooter({ text: `Último ataque: ${user.username} · -${danoJugador} HP` })
-        .setTimestamp();
-      try { bossState.msgVida = await interaction.channel.send({ embeds: [vidaEmbed] }); } catch {}
-    }
+    try { bossState.msgVida = await interaction.channel.send({ embeds: [embed] }); } catch {}
 
     await actualizarBossMsg();
     if (!bossVivo) await matarBoss();
