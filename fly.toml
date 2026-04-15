@@ -1,0 +1,11 @@
+app = "ramitas-bot"
+primary_region = "mia"
+
+[build]
+
+[env]
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
